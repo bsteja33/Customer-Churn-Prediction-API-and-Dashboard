@@ -1,0 +1,18 @@
+[flake8]
+max-line-length = 120
+per-file-ignores =
+    # E402: sys.path manipulation must precede src/ imports in all these files
+    api/app.py:E402
+    src/train.py:E402
+    src/predict.py:E402
+    tests/test_api.py:E402
+    tests/test_integration_train.py:E402
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .eggs,
+    *.egg-info,
+    notebooks/
