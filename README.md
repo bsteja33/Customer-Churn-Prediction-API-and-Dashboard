@@ -1,110 +1,122 @@
-# Customer Churn Prediction API and Dashboard
+# Customer Churn Prediction System
 
-An end to end machine learning system for predicting customer churn in a telecommunications context. The pipeline trains a HistGradientBoostingClassifier (ROC-AUC ~0.92) via stratified cross-validation and RandomizedSearchCV, serves inference through a FastAPI backend with lifespan managed model preloading and renders results on a Streamlit dashboard.
+## Executive Summary
+An enterprise-grade, end-to-end machine learning architecture designed for predicting telecommunications customer churn. The core engine trains a highly optimized `HistGradientBoostingClassifier` evaluated via stratified cross-validation. Inference is decoupled into a high-throughput FastAPI backend that employs strictly-typed Pydantic validation and memory-safe lifespan model preloading. Results are rendered via a decoupled Streamlit dashboard, engineered for resilience with built-in timeout and connection refusal handling. 
 
----
-
-## Architecture and Tech Stack
-
-- **Language:** Python 3.10+
-- **ML Framework:** Scikit-Learn (HistGradientBoostingClassifier, ColumnTransformer, SimpleImputer, RobustScaler, OneHotEncoder)
-- **Hyperparameter Tuning:** RandomizedSearchCV with StratifiedKFold (5-fold, class_weight=balanced)
-- **Model Serialization:** joblib
-- **Backend:** FastAPI, Uvicorn, Pydantic v2
-- **Frontend:** Streamlit, Plotly
-- **Data Processing:** Pandas, NumPy
-- **Containerization:** Docker, Docker Compose
-- **CI:** GitHub Actions (lint, pytest, training sanity check)
-
-The model artifact is loaded into `app.state` at server startup via FastAPI's `@asynccontextmanager` lifespan hook. Inference requests read directly from RAM with zero disk I/O per prediction.
-
----
-
-## Repository Structure
-
-```
+## Updated Project Architecture
+```text
 Customer-Churn-Prediction/
 ├── api/
-│   └── app.py                        FastAPI server; lifespan model preloading, /predict endpoint
+│   └── app.py                        FastAPI inference server with strict Pydantic validation and lifespan caching.
 ├── data/
-│   └── telecom_customer_churn.csv    Raw dataset (~7,000 records, 33 features)
-├── models/
-│   └── churn_model.pkl               Serialized sklearn pipeline (preprocessor + classifier)
+│   └── telecom_customer_churn.csv    Raw dataset containing the customer features.
+├── models/                           [GITIGNORED] Local directory for serialized joblib model pipelines.
 ├── notebooks/
-│   └── Customer_Churn_Prediction.ipynb   R&D documentation: EDA, ROC curves, SHAP analysis
+│   └── Customer_Churn_Prediction.ipynb R&D artifacts, EDA, and SHAP interpretability analysis.
 ├── src/
-│   ├── data_preprocessing.py         Config-driven loading, target mapping, structural cleaning
-│   ├── feature_engineering.py        Vectorized feature derivation (Revenue_per_Tenure, Age_Group)
-│   ├── predict.py                    Inference module with CLI interface (single + batch)
-│   └── train.py                      Training orchestrator: CV, tuning, evaluation, serialization
+│   ├── data_preprocessing.py         Structural data cleaning and pipeline serialization.
+│   ├── feature_engineering.py        Vectorized feature derivation algorithms.
+│   ├── predict.py                    CLI-driven inference module for batch processing.
+│   └── train.py                      Training orchestrator governing cross-validation and hyperparameter tuning.
 ├── tests/
-│   ├── test_api.py                   Endpoint validation (root, health, type rejection, inference)
-│   ├── test_data_preprocessing.py    Data cleaning assertions
-│   ├── test_feature_engineering.py   Feature derivation accuracy
-│   ├── test_integration_train.py     End-to-end pipeline execution
-│   └── test_predict.py              Inference output validation
+│   ├── conftest.py                   Pytest fixture orchestrator for generating dynamic test models.
+│   ├── test_api.py                   Functional API integration testing.
+│   ├── test_data_preprocessing.py    Preprocessing assertions.
+│   ├── test_feature_engineering.py   Feature derivation accuracy checks.
+│   ├── test_integration_train.py     End-to-end training pipeline execution testing.
+│   └── test_predict.py               Inference threshold validation.
 ├── ui/
-│   └── app.py                        Streamlit dashboard with gauge visualization
-├── .github/workflows/ci.yml         GitHub Actions CI pipeline
-├── config.yaml                       Hyperparameters, data paths, API metadata
-├── docker-compose.yml                Multi-service orchestration (API on 8000, UI on 8501)
-├── Dockerfile.api                    API container
-├── Dockerfile.ui                     Frontend container
-├── Makefile                          CLI task automation
-└── requirements.txt                  Python dependencies
+│   └── app.py                        Streamlit dashboard equipped with backend connection resilience.
+├── .github/workflows/ci.yml          Strict continuous integration pipeline (flake8, pytest).
+├── .flake8                           Centralized linting configuration enforcing PEP-8 compliance.
+├── .gitignore                        Repository tracking exclusions.
+├── config.yaml                       Centralized hyperparameters and structural configurations.
+├── docker-compose.yml                Multi-container orchestration configurations.
+├── Dockerfile.api                    API microservice build instructions.
+├── Dockerfile.ui                     Frontend microservice build instructions.
+├── LICENSE                           MIT License application.
+├── Makefile                          Automated task execution protocols.
+└── requirements.txt                  Strictly pinned Python dependencies.
 ```
 
----
+## Installation & Execution
 
-## Execution Protocol
-
-### 1. Environment Setup
-
+### 1. Environment Initialization
 ```bash
-git clone https://github.com/bsteja33/Customer-Churn-Prediction.git
-cd Customer-Churn-Prediction
+git clone https://github.com/bsteja33/Customer-Churn-Prediction-API-and-Dashboard.git
+cd Customer-Churn-Prediction-API-and-Dashboard
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Linux / macOS
+# Windows:
+venv\Scripts\activate
+# Linux/MacOS:
+# source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Model Training
-
-Skip this step if `models/churn_model.pkl` already exists.
-
+### 2. Model Pipeline Generation
+Because the pre-trained model is explicitly untracked to prevent cross-OS binary serialization mismatches, you must generate the model locally before spinning up the backend.
 ```bash
 python src/train.py --config config.yaml
 ```
 
-### 3. Backend Initialization
+### 3. Service Execution
+Execute the API backend and the Streamlit UI simultaneously in separate terminal sessions.
 
+**Terminal 1 (Backend API):**
 ```bash
 uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
+*API documentation is automatically served at http://localhost:8000/docs.*
 
-API documentation is served at `http://localhost:8000/docs`.
-
-### 4. Frontend Initialization (separate terminal)
-
+**Terminal 2 (Frontend Dashboard):**
 ```bash
 streamlit run ui/app.py
 ```
+*Dashboard is served at http://localhost:8501.*
 
-Dashboard is served at `http://localhost:8501`.
+## Testing Profiles
+The `/predict` endpoint can be evaluated using standard curl or Postman payloads.
 
-### 5. Docker Deployment (alternative)
-
-```bash
-docker-compose up --build -d
+### High Risk Payload
+```json
+{
+  "Contract": "Month-to-Month",
+  "Tenure in Months": 2,
+  "Monthly Charge": 95.0,
+  "Total Charges": 190.0,
+  "Internet Service": "Yes",
+  "Internet Type": "Fiber Optic",
+  "Payment Method": "Bank Withdrawal",
+  "Paperless Billing": "Yes"
+}
 ```
 
-### 6. Test Suite
-
-```bash
-pytest -v
+### Medium Risk Payload
+```json
+{
+  "Contract": "One Year",
+  "Tenure in Months": 24,
+  "Monthly Charge": 65.0,
+  "Total Charges": 1560.0,
+  "Internet Service": "Yes",
+  "Internet Type": "DSL",
+  "Payment Method": "Credit Card",
+  "Paperless Billing": "Yes"
+}
 ```
 
----
+### Low Risk Payload
+```json
+{
+  "Contract": "Two Year",
+  "Tenure in Months": 72,
+  "Monthly Charge": 20.0,
+  "Total Charges": 1440.0,
+  "Internet Service": "No",
+  "Payment Method": "Credit Card",
+  "Paperless Billing": "No"
+}
+```
 
-Maintained by [bsteja33](https://github.com/bsteja33)
+## License Indicator
+This project is licensed under the MIT License. See the `LICENSE` file for full details.
