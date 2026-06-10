@@ -1,0 +1,139 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, RefreshCw, Terminal } from "lucide-react";
+import { useChurnStore } from "../../store/useChurnStore";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+export default function AnalysisPage() {
+  const prediction = useChurnStore((state) => state.prediction);
+  const retention = useChurnStore((state) => state.retention);
+  const clearResults = useChurnStore((state) => state.clearResults);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!prediction) {
+      router.replace("/parameters");
+    }
+  }, [prediction, router]);
+
+  if (!prediction) return null;
+
+  const chartData = [
+    { name: "Churn", value: prediction.churn_probability * 100 },
+    { name: "Retain", value: (1 - prediction.churn_probability) * 100 },
+  ];
+
+  const isHighRisk = prediction.retention_risk === "High";
+  const isMediumRisk = prediction.retention_risk === "Medium";
+
+  const riskColor = isHighRisk ? "#ef4444" : isMediumRisk ? "#a3a3a3" : "#22c55e";
+  const riskTextColor = isHighRisk ? "text-red" : isMediumRisk ? "text-neutral-400" : "text-green";
+
+  return (
+    <div className="min-h-screen bg-black text-white overflow-x-hidden">
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 flex flex-col gap-12">
+        <header className="flex items-center justify-between border-b border-white/10 pb-6">
+          <div className="flex items-center gap-4">
+            <Link href="/" className="text-white/50 hover:text-white transition-colors">
+              <ArrowLeft size={24} />
+            </Link>
+            <h1 className="text-2xl font-bold tracking-widest uppercase">Results Terminal</h1>
+          </div>
+          <button
+            onClick={() => {
+              clearResults();
+              router.push("/parameters");
+            }}
+            className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/50 hover:text-white transition-colors"
+          >
+            <RefreshCw size={14} />
+            New Analysis
+          </button>
+        </header>
+
+        <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+          <div className="flex flex-col gap-8">
+            <div className="border border-white/10 p-6 sm:p-8 flex flex-col gap-4">
+              <span className="text-xs uppercase tracking-widest text-white/50">Risk Classification</span>
+              <span className={`text-5xl sm:text-6xl font-bold tracking-tighter ${riskTextColor}`}>
+                {prediction.retention_risk}
+              </span>
+            </div>
+
+            <div className="border border-white/10 p-6 sm:p-8 flex flex-col gap-8">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-widest text-white/50">Churn Probability</span>
+                <span className="text-6xl sm:text-8xl font-bold tabular-nums tracking-tighter">
+                  {(prediction.churn_probability * 100).toFixed(1)}
+                  <span className="text-3xl sm:text-4xl text-white/50 ml-2">%</span>
+                </span>
+              </div>
+
+              <div className="h-48 border-t border-white/10 pt-8 mt-auto">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }}
+                      axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }}
+                      axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                      tickLine={false}
+                      width={40}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#000",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "0",
+                        fontSize: "12px",
+                        color: "#fff",
+                      }}
+                      itemStyle={{ color: "#fff" }}
+                      formatter={(value: number | string | readonly (number | string)[] | undefined) => [`${Number(value || 0).toFixed(1)}%`, ""]}
+                    />
+                    <Bar dataKey="value" radius={[0, 0, 0, 0]}>
+                      {chartData.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === 0 ? riskColor : "#2a2a2a"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col border border-white/10 min-h-[300px]">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-white/10 bg-[#0a0a0a]">
+              <Terminal size={14} className="text-white/50" />
+              <span className="text-xs uppercase tracking-widest text-white/50">Groq Retention Script</span>
+            </div>
+            <div className="flex-1 p-6 sm:p-8 bg-black overflow-y-auto">
+              <pre className="font-mono text-sm leading-loose text-white/80 whitespace-pre-wrap break-words">
+                <span className="text-green-500 mr-4">~ %</span>
+                {retention?.script || "No script generated."}
+              </pre>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
