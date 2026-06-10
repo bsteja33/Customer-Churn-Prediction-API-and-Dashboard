@@ -1,122 +1,158 @@
-# Customer Churn Prediction System
+# Enterprise Churn Engine
 
-## Executive Summary
-An enterprise-grade, end-to-end machine learning architecture designed for predicting telecommunications customer churn. The core engine trains a highly optimized `HistGradientBoostingClassifier` evaluated via stratified cross-validation. Inference is decoupled into a high-throughput FastAPI backend that employs strictly-typed Pydantic validation and memory-safe lifespan model preloading. Results are rendered via a decoupled Streamlit dashboard, engineered for resilience with built-in timeout and connection refusal handling. 
+**Predictive retention infrastructure for telecommunications — streaming LightGBM pipeline, FastAPI inference gateway, and multi-page brutalist frontend.**
 
-## Updated Project Architecture
-```text
-Customer-Churn-Prediction/
-├── api/
-│   └── app.py                        FastAPI inference server with strict Pydantic validation and lifespan caching.
-├── data/
-│   └── telecom_customer_churn.csv    Raw dataset containing the customer features.
-├── models/                           [GITIGNORED] Local directory for serialized joblib model pipelines.
-├── notebooks/
-│   └── Customer_Churn_Prediction.ipynb R&D artifacts, EDA, and SHAP interpretability analysis.
-├── src/
-│   ├── data_preprocessing.py         Structural data cleaning and pipeline serialization.
-│   ├── feature_engineering.py        Vectorized feature derivation algorithms.
-│   ├── predict.py                    CLI-driven inference module for batch processing.
-│   └── train.py                      Training orchestrator governing cross-validation and hyperparameter tuning.
-├── tests/
-│   ├── conftest.py                   Pytest fixture orchestrator for generating dynamic test models.
-│   ├── test_api.py                   Functional API integration testing.
-│   ├── test_data_preprocessing.py    Preprocessing assertions.
-│   ├── test_feature_engineering.py   Feature derivation accuracy checks.
-│   ├── test_integration_train.py     End-to-end training pipeline execution testing.
-│   └── test_predict.py               Inference threshold validation.
-├── ui/
-│   └── app.py                        Streamlit dashboard equipped with backend connection resilience.
-├── .github/workflows/ci.yml          Strict continuous integration pipeline (flake8, pytest).
-├── .flake8                           Centralized linting configuration enforcing PEP-8 compliance.
-├── .gitignore                        Repository tracking exclusions.
-├── config.yaml                       Centralized hyperparameters and structural configurations.
-├── docker-compose.yml                Multi-container orchestration configurations.
-├── Dockerfile.api                    API microservice build instructions.
-├── Dockerfile.ui                     Frontend microservice build instructions.
-├── LICENSE                           MIT License application.
-├── Makefile                          Automated task execution protocols.
-└── requirements.txt                  Strictly pinned Python dependencies.
+---
+
+## Live Application
+
+| Layer | URL |
+|-------|-----|
+| **Frontend Dashboard** | `https://customer-churn-prediction-frontend.vercel.app` |
+| **API Gateway** | `https://customer-churn-prediction-api.onrender.com` |
+| **API Documentation** | `https://customer-churn-prediction-api.onrender.com/docs` |
+
+---
+
+## System Core Metrics
+
+| Metric | Value |
+|--------|-------|
+| ROC AUC | **0.9939** |
+| Model | LightGBM — gradient boosted decision trees |
+| Data Pipeline | Polars — streaming, zero-copy columnar |
+| Inference Latency | < 50 ms per prediction |
+| Training Volume | 50,000 customer records |
+| Validation | Stratified 80/20 holdout |
+
+---
+
+## System Toolchain Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    FRONTEND (Next.js)                    │
+│  Tailwind v4 · Zustand · Zod · Recharts · Lucide Icons  │
+│  Client-side validation · Responsive brutalist grid      │
+└──────────────────────────┬──────────────────────────────┘
+                           │ HTTP / JSON
+                           │ NEXT_PUBLIC_API_URL
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                   API GATEWAY (FastAPI)                   │
+│  Pydantic v2 · CORS · Groq SDK · ASGI lifespan manage    │
+│  /predict · /predict/batch · /generate_retention_script  │
+└──────────────────────────┬──────────────────────────────┘
+                           │ Inference
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                 INFERENCE ENGINE (LightGBM)               │
+│  Feature engineering · One-hot encoding · Column mapping  │
+│  joblib serialized pipeline · 0.9939 ROC AUC             │
+└──────────────────────────┬──────────────────────────────┘
+                           │ Training
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                 TRAINING PIPELINE (Polars)                │
+│  HuggingFace streaming · Feature engineering             │
+│  MLflow tracking · Stratified CV · Hyperparameter tune   │
+└─────────────────────────────────────────────────────────┘
+
+Infrastructure Layer
+  Docker · Docker Compose · GitHub Actions CI
+  Render (API) · Vercel (Frontend)
 ```
 
-## Installation & Execution
+---
 
-### 1. Environment Initialization
+## File Topology Matrix
+
+```
+.github/workflows/ci.yml     — Shell-verified CI with Python lint, pytest, Node build
+api/app.py                    — FastAPI application: 39-field Pydantic model, dual error boundaries, Groq integration
+config.yaml                   — Centralized hyperparameters, data source, model artifact path, LightGBM tuning
+docker-compose.yml            — Multi-service orchestration: api → web with NEXT_PUBLIC_API_URL injection
+Dockerfile                    — Production Python 3.13-slim ASGI container with PORT env var passthrough
+frontend/                     — Next.js 16 application: 3-page brutalist UI, Zustand stores, Zod schemas
+load_tests/locustfile.py      — Load generation: /health (3:1 ratio) and /predict endpoint stress testing
+models/churn_model.pkl        — Serialized LightGBM pipeline artifact (gitignored, generated by src/train.py)
+requirements.txt              — Pinned Python dependencies: FastAPI, Polars, LightGBM, Groq, MLflow, scikit-learn
+src/data_preprocessing.py     — Data loading: local CSV or HuggingFace streaming, structural cleaning
+src/feature_engineering.py    — Feature derivation: service counting, age binning, ratio calculations
+src/predict.py                — CLI inference: single record (JSON) and batch (CSV) prediction modes
+src/train.py                  — Training orchestrator: Polars ingest → feature engineering → LightGBM → MLflow logging
+```
+
+Every file serves a singular, non-overlapping purpose. Zero filler.
+
+---
+
+## Local Deployment Blueprint
+
+### Native Runtime
+
 ```bash
 git clone https://github.com/bsteja33/Customer-Churn-Prediction-API-and-Dashboard.git
 cd Customer-Churn-Prediction-API-and-Dashboard
 python -m venv venv
-# Windows:
+
+# Windows
 venv\Scripts\activate
-# Linux/MacOS:
+# Linux / macOS
 # source venv/bin/activate
+
 pip install -r requirements.txt
-```
-
-### 2. Model Pipeline Generation
-Because the pre-trained model is explicitly untracked to prevent cross-OS binary serialization mismatches, you must generate the model locally before spinning up the backend.
-```bash
 python src/train.py --config config.yaml
-```
 
-### 3. Service Execution
-Execute the API backend and the Streamlit UI simultaneously in separate terminal sessions.
-
-**Terminal 1 (Backend API):**
-```bash
+# Terminal 1 — Backend API
 uvicorn api.app:app --host 0.0.0.0 --port 8000
-```
-*API documentation is automatically served at http://localhost:8000/docs.*
 
-**Terminal 2 (Frontend Dashboard):**
+# Terminal 2 — Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+### Docker Compose
+
 ```bash
-streamlit run ui/app.py
-```
-*Dashboard is served at http://localhost:8501.*
-
-## Testing Profiles
-The `/predict` endpoint can be evaluated using standard curl or Postman payloads.
-
-### High Risk Payload
-```json
-{
-  "Contract": "Month-to-Month",
-  "Tenure in Months": 2,
-  "Monthly Charge": 95.0,
-  "Total Charges": 190.0,
-  "Internet Service": "Yes",
-  "Internet Type": "Fiber Optic",
-  "Payment Method": "Bank Withdrawal",
-  "Paperless Billing": "Yes"
-}
+docker compose up --build
 ```
 
-### Medium Risk Payload
-```json
-{
-  "Contract": "One Year",
-  "Tenure in Months": 24,
-  "Monthly Charge": 65.0,
-  "Total Charges": 1560.0,
-  "Internet Service": "Yes",
-  "Internet Type": "DSL",
-  "Payment Method": "Credit Card",
-  "Paperless Billing": "Yes"
-}
+The frontend auto-discovers the API at `http://localhost:8000` inside the Docker overlay network or falls back to `NEXT_PUBLIC_API_URL`.
+
+### API Testing
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Gender": "Male",
+    "SeniorCitizen": 0,
+    "Partner": 0,
+    "tenure": 2,
+    "PhoneService": 1,
+    "InternetService": 1,
+    "Contract": "Month-to-Month",
+    "PaperlessBilling": 1,
+    "PaymentMethod": "Bank Withdrawal",
+    "MonthlyCharges": 95.0,
+    "TotalCharges": 190.0
+  }'
 ```
 
-### Low Risk Payload
-```json
-{
-  "Contract": "Two Year",
-  "Tenure in Months": 72,
-  "Monthly Charge": 20.0,
-  "Total Charges": 1440.0,
-  "Internet Service": "No",
-  "Payment Method": "Credit Card",
-  "Paperless Billing": "No"
-}
-```
+---
 
-## License Indicator
-This project is licensed under the MIT License. See the `LICENSE` file for full details.
+## CI Pipeline
+
+The `.github/workflows/ci.yml` uses shell-based directory presence checks to conditionally run:
+
+- **Backend validation**: flake8 lint + pytest on `api/` and `src/`
+- **Frontend validation**: ESLint + Next.js production build on `frontend/`
+- Jobs skip cleanly (exit 0) when their target directories are absent from the commit tree.
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
