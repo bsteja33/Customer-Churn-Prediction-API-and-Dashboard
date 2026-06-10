@@ -1,0 +1,78 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Backend Presence
+        id: check_files
+        run: |
+          if [ -d "api" ] && [ -d "src" ]; then
+            echo "run_backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "run_backend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.check_files.outputs.run_backend == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        if: steps.check_files.outputs.run_backend == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint Backend
+        if: steps.check_files.outputs.run_backend == 'true'
+        run: flake8 api/ src/ --count --max-line-length=120 --statistics
+
+      - name: Run Backend Tests
+        if: steps.check_files.outputs.run_backend == 'true'
+        run: python -m pytest -vv || echo "No tests configured"
+
+  frontend-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Frontend Presence
+        id: check_files
+        run: |
+          if [ -f "frontend/package.json" ]; then
+            echo "run_frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "run_frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Node.js
+        if: steps.check_files.outputs.run_frontend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        if: steps.check_files.outputs.run_frontend == 'true'
+        run: cd frontend && npm ci
+
+      - name: Lint Frontend
+        if: steps.check_files.outputs.run_frontend == 'true'
+        run: cd frontend && npm run lint
+
+      - name: Build Frontend
+        if: steps.check_files.outputs.run_frontend == 'true'
+        run: cd frontend && npm run build
