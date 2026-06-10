@@ -74,7 +74,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -197,10 +200,24 @@ def _col_map() -> dict:
     }
 
 
+_BINARY_FIELDS = {
+    "Partner", "Dependents", "Phone Service", "Multiple Lines",
+    "Internet Service", "Online Security", "Online Backup",
+    "Device Protection Plan", "Premium Tech Support",
+    "Streaming TV", "Streaming Movies", "Paperless Billing",
+    "Married", "Under 30", "Unlimited Data", "Streaming Music",
+    "Referred a Friend",
+}
+
+
 def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     mapping = _col_map()
     rename = {k: v for k, v in mapping.items() if k in df.columns}
     df = df.rename(columns=rename)
+
+    for col in _BINARY_FIELDS:
+        if col in df.columns:
+            df[col] = df[col].map({1: "Yes", 0: "No"}).fillna("No")
 
     if "Total Charges" in df.columns:
         df["Total Charges"] = (

@@ -14,12 +14,27 @@ interface FieldGroup {
   fields: FieldDef[];
 }
 
+const YES_NO_FIELDS = new Set([
+  "Married", "PaperlessBilling", "PhoneService", "MultipleLines",
+  "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection",
+  "TechSupport", "StreamingTV", "StreamingMovies", "StreamingMusic",
+  "UnlimitedData", "SeniorCitizen", "Partner", "Dependents",
+  "Under30", "ReferredAFriend",
+]);
+
 const FIELDS: FieldDef[] = [
   { key: "Gender", label: "Gender", type: "select", options: ["Male", "Female"] },
+  { key: "SeniorCitizen", label: "Senior Citizen", type: "select", options: ["Yes", "No"] },
+  { key: "Partner", label: "Partner", type: "select", options: ["Yes", "No"] },
+  { key: "Dependents", label: "Has Dependents", type: "select", options: ["Yes", "No"] },
   { key: "Married", label: "Married", type: "select", options: ["Yes", "No"] },
+  { key: "Under30", label: "Under 30", type: "select", options: ["Yes", "No"] },
+  { key: "ReferredAFriend", label: "Referred a Friend", type: "select", options: ["Yes", "No"] },
   { key: "Age", label: "Age", type: "number" },
-  { key: "NumberOfDependents", label: "Dependents", type: "number" },
+  { key: "NumberOfDependents", label: "Dependents (Count)", type: "number" },
   { key: "NumberOfReferrals", label: "Referrals", type: "number" },
+  { key: "SatisfactionScore", label: "Satisfaction Score (1-5)", type: "number" },
+  { key: "CLTV", label: "CLTV", type: "number" },
   { key: "tenure", label: "Tenure (Months)", type: "number" },
   { key: "Contract", label: "Contract", type: "select", options: ["Month-to-Month", "One Year", "Two Year"] },
   { key: "Offer", label: "Offer", type: "select", options: ["None", "Offer A", "Offer B", "Offer C", "Offer D", "Offer E"] },
@@ -52,7 +67,7 @@ const FIELD_MAP = new Map(FIELDS.map((f) => [f.key, f]));
 const GROUPS: FieldGroup[] = [
   {
     title: "Personal & Account",
-    fields: ["Gender", "Married", "Age", "NumberOfDependents", "NumberOfReferrals", "tenure", "Contract", "Offer"]
+    fields: ["Gender", "SeniorCitizen", "Partner", "Dependents", "Married", "Under30", "ReferredAFriend", "Age", "NumberOfDependents", "NumberOfReferrals", "SatisfactionScore", "tenure", "Contract", "Offer"]
       .map((k) => FIELD_MAP.get(k)!),
   },
   {
@@ -67,7 +82,7 @@ const GROUPS: FieldGroup[] = [
   },
   {
     title: "Charges & Usage",
-    fields: ["MonthlyCharges", "TotalCharges", "TotalRefunds", "TotalExtraDataCharges", "TotalLongDistanceCharges", "TotalRevenue", "AvgMonthlyLongDistanceCharges", "AvgMonthlyGBDownload"]
+    fields: ["MonthlyCharges", "TotalCharges", "TotalRefunds", "TotalExtraDataCharges", "TotalLongDistanceCharges", "TotalRevenue", "AvgMonthlyLongDistanceCharges", "AvgMonthlyGBDownload", "CLTV"]
       .map((k) => FIELD_MAP.get(k)!),
   },
 ];
@@ -98,7 +113,14 @@ export default function ParametersPage() {
       const payload: Record<string, string | number | null | undefined> = {};
       for (const [k, v] of Object.entries(form)) {
         if (v !== null && v !== "") {
-          payload[k] = v === "Yes" ? 1 : v === "No" ? 0 : v;
+          const field = FIELD_MAP.get(k);
+          if (field?.type === "number") {
+            payload[k] = Number(v);
+          } else if (YES_NO_FIELDS.has(k)) {
+            payload[k] = v === "Yes" ? 1 : v === "No" ? 0 : v;
+          } else {
+            payload[k] = v;
+          }
         } else {
           payload[k] = null;
         }
