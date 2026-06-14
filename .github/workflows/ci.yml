@@ -41,7 +41,8 @@ jobs:
       - name: Install Python Dependencies
         if: steps.check_files.outputs.run_backend == 'true'
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip wheel
+          python -m pip install --upgrade --no-cache-dir setuptools
           pip install flake8 pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
@@ -131,7 +132,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip wheel
+          python -m pip install --upgrade --no-cache-dir setuptools
           pip install -r requirements.txt
           pip install bandit
 
@@ -160,7 +162,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip wheel
+          python -m pip install --upgrade --no-cache-dir setuptools
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
