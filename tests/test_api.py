@@ -231,6 +231,29 @@ class TestClassify:
         assert result["prediction"] == 1
         assert result["retention_risk"] == "High"
 
+    def test_classify_exact_boundary_above_high(self):
+        result = _classify(0.7001)
+        assert result["retention_risk"] == "High"
+        assert result["prediction"] == 1
+
+    def test_classify_exact_boundary_below_high(self):
+        result = _classify(0.6999)
+        assert result["retention_risk"] == "Medium"
+        assert result["churn_probability"] == 0.6999
+
+    def test_classify_exact_boundary_above_medium(self):
+        result = _classify(0.4001)
+        assert result["retention_risk"] == "Medium"
+
+    def test_classify_exact_boundary_below_medium(self):
+        result = _classify(0.3999)
+        assert result["retention_risk"] == "Low"
+
+    def test_classify_exact_threshold(self):
+        result = _classify(0.5)
+        assert result["prediction"] == 1
+        assert result["churn_probability"] == 0.5
+
 
 # /predict
 
@@ -289,6 +312,19 @@ class TestPredictEndpoint:
         response = client.post("/predict", json=payload)
         assert response.status_code == 422
 
+    def test_optional_float_accepts_null(self, client: TestClient):
+        """Null JSON value for an Optional[float] field should be accepted."""
+        payload = {**_VALID_RECORD, "MonthlyCharges": None}
+        response = client.post("/predict", json=payload)
+        assert response.status_code == 200
+
+    def test_negative_monetary_value_returns_200(self, client: TestClient):
+        """Pydantic does not enforce nonnegative in the API schema — negative
+        floats should still be accepted."""
+        payload = {**_VALID_RECORD, "MonthlyCharges": -100.0}
+        response = client.post("/predict", json=payload)
+        assert response.status_code == 200
+
 
 # /predict/batch
 
@@ -304,6 +340,12 @@ class TestBatchPredictEndpoint:
     def test_batch_empty_returns_422(self, client: TestClient):
         response = client.post("/predict/batch", json=[])
         assert response.status_code == 422
+
+    def test_batch_maximum_integer_fields(self, client: TestClient):
+        """Boundary test for large integer values in int fields."""
+        payload = [{**_VALID_RECORD, "tenure": 2**31 - 1}]
+        response = client.post("/predict/batch", json=payload)
+        assert response.status_code == 200
 
 
 # /generate_retention_script (mocked Groq)

@@ -71,4 +71,35 @@ describe("useChurnStore", () => {
     expect(state.prediction?.prediction).toBe(1);
     expect(state.retention?.script).toBe("New script.");
   });
+
+  it("handles zero churn_probability boundary", () => {
+    const zeroPrediction = {
+      prediction: 0,
+      churn_probability: 0,
+      retention_risk: "Low",
+    };
+    useChurnStore.getState().setResults(zeroPrediction, mockRetention);
+    const state = useChurnStore.getState();
+    expect(state.prediction?.churn_probability).toBe(0);
+    expect(state.prediction?.prediction).toBe(0);
+  });
+
+  it("handles maximum probability boundary", () => {
+    const maxPrediction = {
+      prediction: 1,
+      churn_probability: 1,
+      retention_risk: "High",
+    };
+    useChurnStore.getState().setResults(maxPrediction, mockRetention);
+    const state = useChurnStore.getState();
+    expect(state.prediction?.churn_probability).toBe(1);
+    expect(state.prediction?.retention_risk).toBe("High");
+  });
+
+  it("handles empty retention script", () => {
+    const emptyRetention = { script: "" };
+    useChurnStore.getState().setResults(mockPrediction, emptyRetention);
+    const state = useChurnStore.getState();
+    expect(state.retention?.script).toBe("");
+  });
 });
