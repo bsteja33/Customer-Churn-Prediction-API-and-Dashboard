@@ -122,6 +122,7 @@ frontend/
     tests/
       store.test.ts
       components.test.tsx
+      status.test.tsx
     types/api.ts
 load_tests/locustfile.py
 models/churn_model.pkl

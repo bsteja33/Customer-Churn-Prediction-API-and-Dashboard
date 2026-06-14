@@ -155,6 +155,36 @@ class TestLoadAndClean:
         assert "Churn Label" not in df.columns
         assert df["Churn"].tolist() == [1, 0]
 
+    def test_load_and_clean_empty_csv_returns_empty(self, tmp_path):
+        csv = tmp_path / "empty.csv"
+        pd.DataFrame({"Churn": []}).to_csv(csv, index=False)
+        config = {
+            "data": {
+                "raw_path": str(csv),
+                "drop_columns": [],
+                "target_column": "Churn",
+                "positive_class": 1,
+                "negative_class": 0,
+            }
+        }
+        df = load_and_clean(config)
+        assert len(df) == 0
+
+    def test_load_and_clean_all_rows_filtered(self, tmp_path):
+        csv = tmp_path / "filtered.csv"
+        pd.DataFrame({"Churn": [2, 3], "Gender": ["M", "F"]}).to_csv(csv, index=False)
+        config = {
+            "data": {
+                "raw_path": str(csv),
+                "drop_columns": [],
+                "target_column": "Churn",
+                "positive_class": 1,
+                "negative_class": 0,
+            }
+        }
+        df = load_and_clean(config)
+        assert len(df) == 0
+
 
 # feature_engineering (pandas version)
 
@@ -215,6 +245,17 @@ class TestPandasFeatureEngineering:
         X, y, *_ = pandas_engineer(df)
         assert "Age_Group" not in X.columns
         assert "Age" not in X.columns
+
+    def test_all_nan_numeric_columns_no_error(self):
+        import numpy as np
+        df = pd.DataFrame({
+            "Churn": [0, 1],
+            "Total Revenue": [np.nan, np.nan],
+            "Tenure in Months": [np.nan, np.nan],
+        })
+        X, y, cat_cols, num_cols = pandas_engineer(df)
+        assert "Churn" not in X.columns
+        assert len(X) == 2
 
 
 # predict module
