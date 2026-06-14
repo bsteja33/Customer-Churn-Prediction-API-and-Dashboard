@@ -10,6 +10,13 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
     volumes:
       - ./models:/app/models
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "api"
 
   web:
     build:
@@ -23,3 +30,18 @@ services:
       - NEXT_PUBLIC_API_URL=http://api:8000
     depends_on:
       - api
+
+  fluent-bit:
+    image: fluent/fluent-bit:latest
+    container_name: churn-log-shipper
+    command:
+      - /fluent-bit/bin/fluent-bit
+      - -i forward
+      - -p
+      - port=24224
+      - -o stdout
+      - -m
+      - '*'
+    ports:
+      - "24224:24224"
+    restart: unless-stopped
