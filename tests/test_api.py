@@ -1,36 +1,47 @@
 """Tests for the Churn Prediction API — validates health, feature engineering,
-classification logic, and the /predict and /predict/batch endpoints."""
+classification logic, and the /predict and /predict/batch endpoints.
+
+All Groq API calls are mocked — no external credentials required."""
 
 import re
 import sys
 import pathlib
+from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
+sys.path.insert(0, ROOT)
 
 from api.app import (
     app,
     _engineer_features,
     _classify,
-    _col_map,
-    _BINARY_FIELDS,
     CustomerFeatures,
 )
+from src.feature_engineering import col_map, BINARY_FIELDS, engineer_features_inference
 
 
-# Ensure _BINARY_FIELDS is used — verify it's non-empty and every entry
-# maps to a binary field in CustomerFeatures (checked in TestColumnMapping).
-assert isinstance(_BINARY_FIELDS, set) and len(_BINARY_FIELDS) > 0
+assert isinstance(BINARY_FIELDS, set) and len(BINARY_FIELDS) > 0
 
 
-# ---------------------------------------------------------------------------
+# Mock helpers
+
+def _mock_groq_response(text: str = "We value you as a customer."):
+    """Build a MagicMock that mimics Groq's chat completion response."""
+    msg = MagicMock()
+    msg.content = text
+    choice = MagicMock()
+    choice.message = msg
+    resp = MagicMock()
+    resp.choices = [choice]
+    return resp
+
+
 # Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
@@ -40,9 +51,7 @@ def client() -> TestClient:
         yield c
 
 
-# ---------------------------------------------------------------------------
 # /health
-# ---------------------------------------------------------------------------
 
 class TestHealthEndpoint:
     def test_health_returns_200_and_healthy_status(self, client: TestClient):
@@ -58,32 +67,25 @@ class TestHealthEndpoint:
         assert "model_path" in data
 
 
-# ---------------------------------------------------------------------------
-# _col_map integrity
-# ---------------------------------------------------------------------------
+# col_map integrity
 
 class TestColumnMapping:
     def test_every_customer_features_field_has_mapping(self):
-        """Every field in CustomerFeatures must have an entry in _col_map()."""
-        mapping = _col_map()
+        mapping = col_map()
         model_fields = set(CustomerFeatures.model_fields.keys())
         missing = model_fields - set(mapping.keys())
-        assert not missing, f"Fields missing from _col_map: {missing}"
+        assert not missing, f"Fields missing from col_map: {missing}"
 
     def test_every_mapped_column_corresponds_to_model_field(self):
-        """Every key in _col_map() must be a valid CustomerFeatures field."""
-        mapping = _col_map()
+        mapping = col_map()
         model_fields = set(CustomerFeatures.model_fields.keys())
         extra = set(mapping.keys()) - model_fields
-        assert not extra, f"_col_map keys not in CustomerFeatures: {extra}"
+        assert not extra, f"col_map keys not in CustomerFeatures: {extra}"
 
     def test_binary_fields_all_have_renamed_column(self):
-        """After applying _col_map() rename, every _BINARY_FIELDS entry
-        should correspond to a renamed column from a binary field."""
-        mapping = _col_map()
+        mapping = col_map()
         for field_name, renamed in mapping.items():
-            if renamed in _BINARY_FIELDS:
-                # Verify the source field expects int (binary)
+            if renamed in BINARY_FIELDS:
                 field_info = CustomerFeatures.model_fields.get(field_name)
                 assert field_info is not None
                 field_type = str(field_info.annotation)
@@ -93,9 +95,7 @@ class TestColumnMapping:
                 )
 
 
-# ---------------------------------------------------------------------------
-# _engineer_features
-# ---------------------------------------------------------------------------
+# engineer_features_inference
 
 _VALID_RECORD = {
     "Gender": "Male",
@@ -141,12 +141,12 @@ _VALID_RECORD = {
 class TestEngineerFeatures:
     def test_produces_non_empty_dataframe(self):
         df = pd.DataFrame([_VALID_RECORD])
-        result = _engineer_features(df)
+        result = engineer_features_inference(df)
         assert not result.empty
 
     def test_all_output_columns_are_numeric_or_bool(self):
         df = pd.DataFrame([_VALID_RECORD])
-        result = _engineer_features(df)
+        result = engineer_features_inference(df)
         for col in result.columns:
             dtype = result[col].dtype
             assert np.issubdtype(dtype, np.number) or dtype == bool, (
@@ -154,20 +154,16 @@ class TestEngineerFeatures:
             )
 
     def test_all_column_names_are_sanitized(self):
-        """After regex sanitization no column should contain spaces or special
-        characters."""
         df = pd.DataFrame([_VALID_RECORD])
-        result = _engineer_features(df)
+        result = engineer_features_inference(df)
         for col in result.columns:
             assert re.fullmatch(r"[a-zA-Z0-9_]+", col), (
                 f"Column '{col}' contains illegal characters"
             )
 
     def test_binary_fields_produce_one_hot_columns(self):
-        """A binary field like Partner:1 should produce Partner_Yes column."""
         df = pd.DataFrame([_VALID_RECORD])
-        result = _engineer_features(df)
-        # Find columns related to Partner
+        result = engineer_features_inference(df)
         partner_cols = [c for c in result.columns if "Partner" in c]
         assert len(partner_cols) >= 1, (
             f"No Partner-related columns found. Got: {list(result.columns)}"
@@ -175,7 +171,7 @@ class TestEngineerFeatures:
 
     def test_empty_dataframe_returns_empty(self):
         df = pd.DataFrame()
-        result = _engineer_features(df)
+        result = engineer_features_inference(df)
         assert result.empty or len(result.columns) == 0
 
     def test_partial_record_does_not_raise(self):
@@ -185,17 +181,14 @@ class TestEngineerFeatures:
             "MonthlyCharges": 50.0,
         }
         df = pd.DataFrame([partial])
-        result = _engineer_features(df)
+        result = engineer_features_inference(df)
         assert not result.empty
-        # All columns numeric or bool (get_dummies produces bool)
         for col in result.columns:
             dtype = result[col].dtype
             assert np.issubdtype(dtype, np.number) or dtype == bool
 
 
-# ---------------------------------------------------------------------------
 # _classify
-# ---------------------------------------------------------------------------
 
 class TestClassify:
     def test_high_risk_above_threshold(self):
@@ -239,9 +232,7 @@ class TestClassify:
         assert result["retention_risk"] == "High"
 
 
-# ---------------------------------------------------------------------------
 # /predict
-# ---------------------------------------------------------------------------
 
 class TestPredictEndpoint:
     def test_valid_payload_returns_200(self, client: TestClient):
@@ -299,9 +290,7 @@ class TestPredictEndpoint:
         assert response.status_code == 422
 
 
-# ---------------------------------------------------------------------------
 # /predict/batch
-# ---------------------------------------------------------------------------
 
 class TestBatchPredictEndpoint:
     def test_batch_with_multiple_records(self, client: TestClient):
@@ -317,9 +306,145 @@ class TestBatchPredictEndpoint:
         assert response.status_code == 422
 
 
-# ---------------------------------------------------------------------------
+# /generate_retention_script (mocked Groq)
+
+class TestRetentionScriptEndpoint:
+    """All tests in this class mock api.app.groq_client to avoid hitting the
+    live Groq API."""
+
+    MOCKED_SCRIPT = "Thank you for your loyalty. Let me apply a 10% discount to your next bill."
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_valid_request_returns_script(self, mock_create, client: TestClient):
+        mock_create.return_value = _mock_groq_response(self.MOCKED_SCRIPT)
+        response = client.post(
+            "/generate_retention_script",
+            json={
+                "risk_level": "High",
+                "reasons": "Billing confusion, lack of usage.",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        expected = "[Generated by Llama-3] " + self.MOCKED_SCRIPT
+        assert data["script"] == expected
+        # Verify the tag is prepended and NOT embedded in the body
+        assert "[Generated by Llama-3]" in data["script"]
+        assert data["script"].startswith("[Generated by Llama-3]")
+        assert "[Fallback Script]" not in data["script"]
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_mock_was_called_with_correct_model(self, mock_create, client: TestClient):
+        mock_create.return_value = _mock_groq_response(self.MOCKED_SCRIPT)
+        client.post(
+            "/generate_retention_script",
+            json={"risk_level": "Low", "reasons": "No issues reported."},
+        )
+        mock_create.assert_called_once()
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["model"] == "llama3-8b-8192"
+        assert len(call_kwargs["messages"]) == 1
+        assert "Low" in call_kwargs["messages"][0]["content"]
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_groq_exception_falls_back(self, mock_create, client: TestClient):
+        mock_create.side_effect = Exception("API timeout")
+        response = client.post(
+            "/generate_retention_script",
+            json={"risk_level": "High", "reasons": "Service outage."},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["script"].startswith("[Fallback Script]")
+        assert "We value you as a customer" in data["script"]
+        assert "Let me review your account" in data["script"]
+        # Verify Fallback tag is prepended exclusively
+        assert "[Generated by Llama-3]" not in data["script"]
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_groq_response_exactly_one_tag_prefix(self, mock_create, client: TestClient):
+        mock_create.return_value = _mock_groq_response(
+            "Thank you for choosing us."
+        )
+        response = client.post(
+            "/generate_retention_script",
+            json={"risk_level": "Low", "reasons": "No issues."},
+        )
+        data = response.json()
+        # Script should have exactly one tag prefix followed by the clean response
+        assert data["script"].count("[") == 1
+        assert data["script"].count("]") == 1
+        assert "[Generated by Llama-3]" in data["script"]
+        assert data["script"].endswith("Thank you for choosing us.")
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_fallback_script_has_no_llama_tag(self, mock_create, client: TestClient):
+        mock_create.side_effect = RuntimeError("Connection refused")
+        response = client.post(
+            "/generate_retention_script",
+            json={"risk_level": "High", "reasons": "Network issues."},
+        )
+        data = response.json()
+        assert data["script"].startswith("[Fallback Script]")
+        assert "[Generated by Llama-3]" not in data["script"]
+        assert data["script"].count("[") == 1
+
+    def test_missing_risk_level_returns_422(self, client: TestClient):
+        response = client.post(
+            "/generate_retention_script",
+            json={"reasons": "Some reason."},
+        )
+        assert response.status_code == 422
+
+    def test_missing_reasons_returns_422(self, client: TestClient):
+        response = client.post(
+            "/generate_retention_script",
+            json={"risk_level": "High"},
+        )
+        assert response.status_code == 422
+
+
+# Round-Trip: /predict → /generate_retention_script
+
+class TestRoundTrip:
+    """Verify that a prediction result can be fed into the retention script
+    endpoint in a single mocked flow."""
+
+    @patch("api.app.groq_client.chat.completions.create")
+    def test_predict_then_generate_script(self, mock_create, client: TestClient):
+        MOCK_SCRIPT = "Thank you for being a loyal customer."
+        mock_create.return_value = _mock_groq_response(MOCK_SCRIPT)
+
+        # Step 1: Get a prediction
+        pred_resp = client.post("/predict", json=_VALID_RECORD)
+        assert pred_resp.status_code == 200
+        pred = pred_resp.json()
+        assert "retention_risk" in pred
+        assert "churn_probability" in pred
+
+        # Step 2: Feed the risk level into the retention script endpoint
+        script_resp = client.post(
+            "/generate_retention_script",
+            json={
+                "risk_level": pred["retention_risk"],
+                "reasons": (
+                    f"Churn probability "
+                    f"{(pred['churn_probability'] * 100):.1f}%. "
+                    f"Contract: Month-to-Month. Tenure: 12 months."
+                ),
+            },
+        )
+        assert script_resp.status_code == 200
+        script_data = script_resp.json()
+        assert script_data["script"] == "[Generated by Llama-3] " + MOCK_SCRIPT
+
+        # Step 3: Verify the mock was called with the correct risk level
+        call_kwargs = mock_create.call_args[1]
+        content = call_kwargs["messages"][0]["content"]
+        assert pred["retention_risk"] in content
+
+
 # / root
-# ---------------------------------------------------------------------------
 
 class TestRootEndpoint:
     def test_root_returns_message(self, client: TestClient):

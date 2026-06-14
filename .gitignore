@@ -30,9 +30,10 @@ logs/
 # MLflow
 mlruns/
 
-# pytest / mypy cache
+# pytest / mypy cache / coverage
 .pytest_cache/
 .mypy_cache/
+.coverage
 
 # Model artifacts (tracked in repo for deployment)
 

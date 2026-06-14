@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useChurnStore } from "../../store/useChurnStore";
 import { FormField, FieldDef } from "../../components/ui/FormField";
 import { ChurnInputSchema } from "../../lib/schema";
+import type { PredictResponse, RetentionScriptResponse } from "../../types/api";
 import { z } from "zod";
 
 interface FieldGroup {
@@ -139,7 +140,7 @@ export default function ParametersPage() {
         throw new Error(errBody?.detail || `Prediction failed with status ${predictRes.status}`);
       }
 
-      const predData = await predictRes.json();
+      const predData: PredictResponse = await predictRes.json();
 
       const scriptRes = await fetch(`${API_BASE}/generate_retention_script`, {
         method: "POST",
@@ -150,7 +151,9 @@ export default function ParametersPage() {
         }),
       });
 
-      const scriptData = scriptRes.ok ? await scriptRes.json() : { script: "Failed to generate script." };
+      const scriptData: RetentionScriptResponse = scriptRes.ok
+        ? await scriptRes.json()
+        : { script: "Failed to generate script." };
 
       setResults(predData, scriptData);
       router.push("/analysis");

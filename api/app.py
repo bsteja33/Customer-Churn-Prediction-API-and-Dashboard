@@ -1,27 +1,62 @@
 """FastAPI application for churn prediction and retention scripts."""
 
+import json
 import logging
 import os
 import pathlib
-import re
 import sys
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
 import joblib
-import numpy as np
 import pandas as pd
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 from pydantic import BaseModel, Field, ConfigDict
+from src.feature_engineering import engineer_features_inference
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+
+class JsonFormatter(logging.Formatter):
+    """Structured JSON log formatter for log aggregators (Datadog, ELK).
+    Includes all extra context fields and exception tracebacks."""
+
+    BASE_KEYS = frozenset({
+        "timestamp", "level", "logger", "message", "module", "line",
+    })
+
+    def format(self, record: logging.LogRecord) -> str:
+        data = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "line": record.lineno,
+        }
+        for key, value in record.__dict__.items():
+            if key not in self.BASE_KEYS and not key.startswith("_"):
+                try:
+                    data[key] = value
+                except TypeError:
+                    data[key] = str(value)
+        if record.exc_info and record.exc_info[1] is not None:
+            data["exception"] = str(record.exc_info[1])
+        return json.dumps(data)
+
+
 logger = logging.getLogger("api")
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
+_handler = logging.StreamHandler()
+_handler.setFormatter(JsonFormatter())
+logger.handlers.clear()
+logger.addHandler(_handler)
+logger.propagate = False
 
 _config_path = ROOT / "config.yaml"
 with open(_config_path) as f:
@@ -29,10 +64,11 @@ with open(_config_path) as f:
 
 _model_path = ROOT / _cfg["model"]["save_path"]
 
+_threshold = 0.5
 try:
-    _threshold = float(_cfg.get("model", {}).get("threshold", 0.5))
-except (TypeError, ValueError):
-    _threshold = 0.5
+    _threshold = float(_cfg["model"]["threshold"])
+except (KeyError, TypeError, ValueError):
+    pass
 
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 
@@ -40,7 +76,7 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not _model_path.exists():
-        logger.error("MODEL_NOT_FOUND: %s", _model_path)
+        logger.error("MODEL_NOT_FOUND", extra={"path": str(_model_path)})
         raise RuntimeError(
             f"Model artifact not found at {_model_path}. "
             "Run 'python src/train.py' first."
@@ -50,10 +86,11 @@ async def lifespan(app: FastAPI):
     app.state.expected_features = getattr(
         app.state.model, "feature_name_", None
     )
-    logger.info("MODEL_LOADED: %s", _model_path)
+    logger.info("MODEL_LOADED", extra={"path": str(_model_path)})
     if app.state.expected_features is not None:
         logger.info(
-            "EXPECTED_FEATURES: %d", len(app.state.expected_features)
+            "EXPECTED_FEATURES",
+            extra={"count": len(app.state.expected_features)},
         )
     yield
     del app.state.model
@@ -82,6 +119,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed = round((time.time() - start) * 1000)
+    logger.info(
+        "REQUEST_COMPLETE",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": elapsed,
+        },
+    )
+    return response
 
 
 class CustomerFeatures(BaseModel):
@@ -157,96 +211,7 @@ class RetentionScriptResponse(BaseModel):
     )
 
 
-def _col_map() -> dict:
-    """Map snake_case field names to actual dataset column names."""
-    return {
-        "Gender": "Gender",
-        "SeniorCitizen": "Senior Citizen",
-        "Partner": "Partner",
-        "Dependents": "Dependents",
-        "tenure": "Tenure in Months",
-        "PhoneService": "Phone Service",
-        "MultipleLines": "Multiple Lines",
-        "InternetService": "Internet Service",
-        "OnlineSecurity": "Online Security",
-        "OnlineBackup": "Online Backup",
-        "DeviceProtection": "Device Protection Plan",
-        "TechSupport": "Premium Tech Support",
-        "StreamingTV": "Streaming TV",
-        "StreamingMovies": "Streaming Movies",
-        "Contract": "Contract",
-        "PaperlessBilling": "Paperless Billing",
-        "PaymentMethod": "Payment Method",
-        "MonthlyCharges": "Monthly Charge",
-        "TotalCharges": "Total Charges",
-        "Married": "Married",
-        "NumberOfDependents": "Number of Dependents",
-        "NumberOfReferrals": "Number of Referrals",
-        "SatisfactionScore": "Satisfaction Score",
-        "InternetType": "Internet Type",
-        "Offer": "Offer",
-        "Age": "Age",
-        "AvgMonthlyGBDownload": "Avg Monthly GB Download",
-        "AvgMonthlyLongDistanceCharges": "Avg Monthly Long Distance Charges",
-        "CLTV": "CLTV",
-        "Under30": "Under 30",
-        "UnlimitedData": "Unlimited Data",
-        "StreamingMusic": "Streaming Music",
-        "ReferredAFriend": "Referred a Friend",
-        "TotalRefunds": "Total Refunds",
-        "TotalExtraDataCharges": "Total Extra Data Charges",
-        "TotalLongDistanceCharges": "Total Long Distance Charges",
-        "TotalRevenue": "Total Revenue",
-    }
-
-
-_BINARY_FIELDS = {
-    "Partner", "Dependents", "Phone Service", "Multiple Lines",
-    "Internet Service", "Online Security", "Online Backup",
-    "Device Protection Plan", "Premium Tech Support",
-    "Streaming TV", "Streaming Movies", "Paperless Billing",
-    "Married", "Under 30", "Unlimited Data", "Streaming Music",
-    "Referred a Friend",
-}
-
-
-def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    mapping = _col_map()
-    rename = {k: v for k, v in mapping.items() if k in df.columns}
-    df = df.rename(columns=rename)
-
-    for col in _BINARY_FIELDS:
-        if col in df.columns:
-            df[col] = df[col].map({1: "Yes", 0: "No"}).fillna("No")
-
-    if "Total Charges" in df.columns:
-        df["Total Charges"] = (
-            df["Total Charges"]
-            .replace(r"^\s*$", "0.0", regex=True)
-            .astype(float)
-        )
-
-    if "Senior Citizen" in df.columns:
-        df["Senior Citizen"] = df["Senior Citizen"].astype(str)
-
-    for col in df.columns:
-        if np.issubdtype(df[col].dtype, np.number):
-            df[col] = df[col].fillna(0)
-
-    for col in df.select_dtypes(include=["object"]).columns:
-        df[col] = df[col].fillna("")
-
-    cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
-    if cat_cols:
-        df = pd.get_dummies(df, columns=cat_cols, drop_first=False)
-
-    for col in df.columns:
-        if not np.issubdtype(df[col].dtype, np.number):
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    df.columns = [re.sub(r"[^a-zA-Z0-9_]", "_", c) for c in df.columns]
-
-    return df
+_engineer_features = engineer_features_inference
 
 
 def _classify(proba: float) -> dict:
@@ -294,7 +259,7 @@ def predict_endpoint(customer: CustomerFeatures, request: Request):
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
-        logger.exception("PREDICTION_ERROR")
+        logger.exception("PREDICTION_ERROR", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
@@ -329,7 +294,7 @@ def predict_batch_endpoint(customers: list[CustomerFeatures], request: Request):
         )
 
     except Exception as e:
-        logger.exception("BATCH_PREDICTION_ERROR")
+        logger.exception("BATCH_PREDICTION_ERROR", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
 
 
@@ -350,9 +315,10 @@ def generate_retention_script(req: RetentionScriptRequest):
             model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
         )
-        script = response.choices[0].message.content.strip()
+        script = "[Generated by Llama-3] " + response.choices[0].message.content.strip()
     except Exception:
         script = (
+            "[Fallback Script] "
             "We value you as a customer. "
             "Let me review your account and find a solution that works for you."
         )

@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "Next-generation predictive analytics and retention script generation.",
 };
 
+const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || "development";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -29,6 +31,11 @@ export default function RootLayout({
     >
       <body className="h-full bg-black text-white selection:bg-white selection:text-black overflow-x-hidden">
         {children}
+        <footer className="w-full text-center py-4">
+          <span className="text-[10px] text-white/20 tracking-wider font-mono">
+            Build: {BUILD_TIME}
+          </span>
+        </footer>
       </body>
     </html>
   );

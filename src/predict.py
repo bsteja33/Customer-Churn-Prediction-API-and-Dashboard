@@ -11,6 +11,7 @@ import pandas as pd
 
 from typing import Any
 from src.data_preprocessing import load_config
+from src.feature_engineering import engineer_features_inference
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +20,9 @@ _DEFAULT_MODEL_PATH = ROOT / "models" / "churn_model.pkl"
 
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-    _log_dir = ROOT / "logs"
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(_log_dir / "predictions.log")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 _ARTIFACT_CACHE: dict[str, Any] | None = None
 
@@ -55,50 +50,16 @@ def predict_single(
     pipeline = artifact["pipeline"]
 
     df = pd.DataFrame([customer])
-
-    if "Total Revenue" in df.columns and "Tenure in Months" in df.columns:
-        df["Revenue_per_Tenure"] = np.where(
-            df["Tenure in Months"] == 0, 0,
-            df["Total Revenue"] / df["Tenure in Months"]
-        )
-
-    if "Total Charges" in df.columns and "Tenure in Months" in df.columns:
-        df["Charges_per_Month"] = np.where(
-            df["Tenure in Months"] == 0, 0,
-            df["Total Charges"] / df["Tenure in Months"]
-        )
-
-    service_cols = [
-        col for col in df.columns
-        if any(k in col for k in ["Security", "Backup", "Protection", "Tech Support", "Streaming"])
-    ]
-    if service_cols:
-        service_count = pd.Series(np.zeros(len(df), dtype=int), index=df.index)
-        for col in service_cols:
-            service_count += (df[col] == "Yes").astype(int)
-        df["Total_Services"] = service_count
-    else:
-        df["Total_Services"] = 0
-
-    if "Age" in df.columns:
-        df["Age_Group"] = (
-            pd.cut(
-                df["Age"],
-                bins=[0, 30, 50, 70, 120],
-                labels=["Young", "Adult", "Senior", "Elderly"],
-            ).astype(str)
-        )
-        df = df.drop(columns=["Age"])
+    df = engineer_features_inference(df)
 
     try:
-        config_path = ROOT / "config.yaml"
-        cfg = load_config(config_path)
-        threshold = float(cfg.get("model", {}).get("threshold", 0.5))
+        cfg = load_config(str(ROOT / "config.yaml"))
+        _threshold = float(cfg["model"]["threshold"])
     except Exception:
-        threshold = 0.5
+        _threshold = 0.5
 
     churn_proba = float(pipeline.predict_proba(df)[0][1])
-    prediction = int(churn_proba >= threshold)
+    prediction = int(churn_proba >= _threshold)
 
     if churn_proba >= 0.70:
         risk = "High"
@@ -113,13 +74,7 @@ def predict_single(
         "retention_risk": risk,
     }
 
-    try:
-        logger.info(
-            "PREDICTION_GENERATED",
-            extra={"input": json.dumps(customer), "output": json.dumps(result)}
-        )
-    except Exception:
-        logger.info("PREDICTION_GENERATED: INPUT=%s OUTPUT=%s", customer, result)
+    logger.info("PREDICTION_GENERATED: INPUT=%s OUTPUT=%s", json.dumps(customer), json.dumps(result))
 
     return result
 

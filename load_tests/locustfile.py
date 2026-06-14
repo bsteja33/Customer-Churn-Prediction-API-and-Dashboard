@@ -11,48 +11,55 @@ def _random_payload():
 
     return {
         "Gender": random.choice(genders),
-        "Married": random.choice(["Yes", "No"]),
-        "Number of Dependents": random.randint(0, 5),
-        "Number of Referrals": random.randint(0, 10),
-        "Tenure in Months": random.randint(1, 72),
-        "Offer": random.choice(offers),
-        "Phone Service": "Yes",
-        "Avg Monthly Long Distance Charges": round(random.uniform(0, 50), 2),
-        "Multiple Lines": random.choice(["Yes", "No"]),
-        "Internet Service": "Yes",
-        "Internet Type": random.choice(internet_types),
-        "Avg Monthly GB Download": round(random.uniform(0, 500), 1),
-        "Online Security": random.choice(["Yes", "No"]),
-        "Online Backup": random.choice(["Yes", "No"]),
-        "Device Protection Plan": random.choice(["Yes", "No"]),
-        "Premium Tech Support": random.choice(["Yes", "No"]),
-        "Streaming TV": random.choice(["Yes", "No"]),
-        "Streaming Movies": random.choice(["Yes", "No"]),
-        "Streaming Music": random.choice(["Yes", "No"]),
-        "Unlimited Data": random.choice(["Yes", "No"]),
+        "SeniorCitizen": random.randint(0, 1),
+        "Partner": random.randint(0, 1),
+        "Dependents": random.randint(0, 1),
+        "tenure": random.randint(1, 72),
+        "PhoneService": random.randint(0, 1),
+        "MultipleLines": random.randint(0, 1),
+        "InternetService": random.randint(0, 1),
+        "OnlineSecurity": random.randint(0, 1),
+        "OnlineBackup": random.randint(0, 1),
+        "DeviceProtection": random.randint(0, 1),
+        "TechSupport": random.randint(0, 1),
+        "StreamingTV": random.randint(0, 1),
+        "StreamingMovies": random.randint(0, 1),
         "Contract": random.choice(contracts),
-        "Paperless Billing": random.choice(["Yes", "No"]),
-        "Payment Method": random.choice(payments),
-        "Monthly Charge": round(random.uniform(20, 120), 2),
-        "Total Charges": round(random.uniform(100, 6000), 2),
-        "Total Refunds": round(random.uniform(0, 50), 2),
-        "Total Extra Data Charges": round(random.uniform(0, 20), 2),
-        "Total Long Distance Charges": round(random.uniform(0, 300), 2),
-        "Total Revenue": round(random.uniform(100, 6000), 2),
+        "PaperlessBilling": random.randint(0, 1),
+        "PaymentMethod": random.choice(payments),
+        "MonthlyCharges": round(random.uniform(20, 120), 2),
+        "TotalCharges": round(random.uniform(100, 6000), 2),
+        "Married": random.randint(0, 1),
+        "NumberOfDependents": random.randint(0, 5),
+        "NumberOfReferrals": random.randint(0, 10),
+        "SatisfactionScore": random.randint(1, 5),
+        "InternetType": random.choice(internet_types),
+        "Offer": random.choice(offers),
         "Age": random.randint(18, 80),
+        "AvgMonthlyGBDownload": random.randint(0, 500),
+        "AvgMonthlyLongDistanceCharges": round(random.uniform(0, 50), 2),
+        "CLTV": random.randint(1000, 8000),
+        "Under30": random.randint(0, 1),
+        "UnlimitedData": random.randint(0, 1),
+        "StreamingMusic": random.randint(0, 1),
+        "ReferredAFriend": random.randint(0, 1),
+        "TotalRefunds": round(random.uniform(0, 50), 2),
+        "TotalExtraDataCharges": random.randint(0, 20),
+        "TotalLongDistanceCharges": round(random.uniform(0, 300), 2),
+        "TotalRevenue": round(random.uniform(100, 6000), 2),
     }
 
 
 class CustomerServiceAgent(HttpUser):
     wait_time = between(0.5, 2.0)
 
-    @task(3)
+    @task(1)
     def health_check(self):
         with self.client.get("/health", catch_response=True) as resp:
             if resp.status_code != 200:
                 resp.failure(f"Health check failed: {resp.status_code}")
 
-    @task(1)
+    @task(3)
     def predict_churn(self):
         payload = _random_payload()
         with self.client.post("/predict", json=payload, catch_response=True) as resp:
