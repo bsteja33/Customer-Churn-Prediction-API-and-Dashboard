@@ -141,12 +141,12 @@ class RetentionScriptRequest(BaseModel):
     risk_level: str = Field(
         ...,
         description="Risk tier returned by the prediction endpoint.",
-        example="High",
+        json_schema_extra={"example": "High"},
     )
     reasons: str = Field(
         ...,
         description="Key churn reasons.",
-        example="Customer cited billing confusion and lack of usage.",
+        json_schema_extra={"example": "Customer cited billing confusion and lack of usage."},
     )
 
 
