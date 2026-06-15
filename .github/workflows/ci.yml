@@ -41,8 +41,7 @@ jobs:
       - name: Install Python Dependencies
         if: steps.check_files.outputs.run_backend == 'true'
         run: |
-          python -m pip install --upgrade pip wheel
-          python -m pip install --upgrade --no-cache-dir setuptools
+          python -m pip install --upgrade pip wheel setuptools build
           pip install flake8 pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
@@ -132,10 +131,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip wheel
-          python -m pip install --upgrade --no-cache-dir setuptools
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip wheel setuptools build
           pip install bandit
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run Bandit SAST
         run: bandit -r api/ src/ -lll
@@ -162,10 +160,9 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip wheel
-          python -m pip install --upgrade --no-cache-dir setuptools
+          python -m pip install --upgrade pip wheel setuptools build
           pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
       - name: Boot Server & Run Load Test
         run: |
