@@ -49,10 +49,13 @@ def check_health() -> dict:
 
 
 def main() -> int:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    logger = logging.getLogger("health_monitor")
     try:
         data = check_health()
     except RuntimeError as e:
-        print(f"FAIL: {e}")
+        logger.error("FAIL: %s", e)
         return 1
 
     status = data.get("status", "unknown")
@@ -61,14 +64,14 @@ def main() -> int:
     mem = _get_memory_mb()
 
     if status != "healthy":
-        print(f"FAIL: status={status}, model_loaded={model_loaded}, memory={mem:.1f}MB")
+        logger.error("FAIL: status=%s, model_loaded=%s, memory=%.1fMB", status, model_loaded, mem)
         return 1
 
     if not model_loaded:
-        print(f"FAIL: model not loaded. path={model_path}, memory={mem:.1f}MB")
+        logger.error("FAIL: model not loaded. path=%s, memory=%.1fMB", model_path, mem)
         return 1
 
-    print(f"OK: status={status}, model_loaded={model_loaded}, path={model_path}, memory={mem:.1f}MB")
+    logger.info("OK: status=%s, model_loaded=%s, path=%s, memory=%.1fMB", status, model_loaded, model_path, mem)
     return 0
 
 

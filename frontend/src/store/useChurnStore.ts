@@ -11,15 +11,15 @@ interface RetentionResult {
 }
 
 interface ChurnState {
-  prediction: PredictionResult | null;
-  retention: RetentionResult | null;
+  prediction: PredictionResult | undefined;
+  retention: RetentionResult | undefined;
   setResults: (prediction: PredictionResult, retention: RetentionResult) => void;
   clearResults: () => void;
 }
 
 export const useChurnStore = create<ChurnState>((set) => ({
-  prediction: null,
-  retention: null,
+  prediction: undefined,
+  retention: undefined,
   setResults: (prediction, retention) => set({ prediction, retention }),
-  clearResults: () => set({ prediction: null, retention: null }),
+  clearResults: () => set({ prediction: undefined, retention: undefined }),
 }));

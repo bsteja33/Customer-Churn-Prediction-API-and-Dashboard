@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Activity, Database, Clock, Server } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || "development";
 
 interface HealthData {

@@ -1,22 +1,24 @@
 """FastAPI application for churn prediction and retention scripts."""
 
+import asyncio
 import json
 import logging
 import os
 import pathlib
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Optional
 
 import joblib
 import pandas as pd
-import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 from pydantic import BaseModel, Field, ConfigDict
 from src.feature_engineering import engineer_features_inference
+from src.config import MODEL_CONFIG
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -58,21 +60,11 @@ logger.handlers.clear()
 logger.addHandler(_handler)
 logger.propagate = False
 
-_config_path = ROOT / "config.yaml"
-with open(_config_path) as f:
-    _cfg = yaml.safe_load(f)
-
-_model_path = ROOT / _cfg["model"]["save_path"]
-
-_threshold = 0.5
-try:
-    _threshold = float(_cfg["model"]["threshold"])
-except (KeyError, TypeError, ValueError):
-    pass
-
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+_model_path = ROOT / MODEL_CONFIG["save_path"]
+_threshold = float(MODEL_CONFIG.get("threshold", 0.5))
 
 
+# Groq initialization is lazy loaded in _generate_script
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not _model_path.exists():
@@ -86,6 +78,10 @@ async def lifespan(app: FastAPI):
     app.state.expected_features = getattr(
         app.state.model, "feature_name_", None
     )
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    app.state.executor = executor
+
     logger.info("MODEL_LOADED", extra={"path": str(_model_path)})
     if app.state.expected_features is not None:
         logger.info(
@@ -93,8 +89,7 @@ async def lifespan(app: FastAPI):
             extra={"count": len(app.state.expected_features)},
         )
     yield
-    del app.state.model
-    del app.state.expected_features
+    executor.shutdown(wait=False)
     logger.info("MODEL_RELEASED")
 
 
@@ -139,7 +134,7 @@ async def log_requests(request: Request, call_next):
 
 
 class CustomerFeatures(BaseModel):
-    model_config = ConfigDict(strict=False)
+    model_config = ConfigDict(strict=False, extra="forbid")
     Gender: Optional[str] = Field(None)
     SeniorCitizen: Optional[int] = Field(None)
     Partner: Optional[int] = Field(None)
@@ -180,18 +175,21 @@ class CustomerFeatures(BaseModel):
 
 
 class ChurnResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     prediction: int = Field(..., description="1 = Churned, 0 = Stayed")
     churn_probability: float = Field(..., description="Model confidence score [0, 1]")
     retention_risk: str = Field(..., description="High / Medium / Low risk tier")
 
 
 class BatchChurnResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     results: list[ChurnResponse]
     total_records: int
     high_risk_count: int
 
 
 class RetentionScriptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     risk_level: str = Field(
         ...,
         description="Risk tier returned by the prediction endpoint.",
@@ -205,6 +203,7 @@ class RetentionScriptRequest(BaseModel):
 
 
 class RetentionScriptResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     script: str = Field(
         ...,
         description="A 2-sentence retention script for the customer service agent.",
@@ -236,8 +235,19 @@ def health_check(request: Request):
     }
 
 
+def _process_prediction(pipeline, expected, record):
+    df = _engineer_features(pd.DataFrame([record]))
+    if expected is not None:
+        for col in expected:
+            if col not in df.columns:
+                df[col] = 0
+        df = df[[c for c in expected if c in df.columns]]
+    proba = float(pipeline.predict_proba(df)[0][1])
+    return _classify(proba)
+
+
 @app.post("/predict", response_model=ChurnResponse, tags=["Machine Learning"])
-def predict_endpoint(customer: CustomerFeatures, request: Request):
+async def predict_endpoint(customer: CustomerFeatures, request: Request):
     try:
         pipeline = request.app.state.model
         expected = request.app.state.expected_features
@@ -245,26 +255,42 @@ def predict_endpoint(customer: CustomerFeatures, request: Request):
         record = customer.model_dump(by_alias=False, exclude_none=False)
         record = {k: v for k, v in record.items() if v is not None}
 
-        df = _engineer_features(pd.DataFrame([record]))
-
-        if expected is not None:
-            for col in expected:
-                if col not in df.columns:
-                    df[col] = 0
-            df = df[[c for c in expected if c in df.columns]]
-
-        proba = float(pipeline.predict_proba(df)[0][1])
-        return ChurnResponse(**_classify(proba))
+        loop = asyncio.get_running_loop()
+        result_dict = await loop.run_in_executor(
+            request.app.state.executor, _process_prediction, pipeline, expected, record
+        )
+        return ChurnResponse(**result_dict)
 
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
+    except TypeError as te:
+        logger.exception("PREDICTION_TYPE_ERROR", extra={"error": str(te)})
+        raise HTTPException(status_code=500, detail="Type evaluation failed during prediction.")
     except Exception as e:
         logger.exception("PREDICTION_ERROR", extra={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Prediction failed due to an internal error.")
+
+
+def _process_batch_prediction(pipeline, expected, records):
+    df = _engineer_features(pd.DataFrame(records))
+    if expected is not None:
+        for col in expected:
+            if col not in df.columns:
+                df[col] = 0
+        df = df[[c for c in expected if c in df.columns]]
+
+    probas = pipeline.predict_proba(df)[:, 1]
+    results = [ChurnResponse(**_classify(float(p))) for p in probas]
+    high_risk = sum(1 for r in results if r.retention_risk == "High")
+    return BatchChurnResponse(
+        results=results,
+        total_records=len(results),
+        high_risk_count=high_risk,
+    )
 
 
 @app.post("/predict/batch", response_model=BatchChurnResponse, tags=["Machine Learning"])
-def predict_batch_endpoint(customers: list[CustomerFeatures], request: Request):
+async def predict_batch_endpoint(customers: list[CustomerFeatures], request: Request):
     if not customers:
         raise HTTPException(status_code=422, detail="Batch cannot be empty.")
     try:
@@ -276,26 +302,42 @@ def predict_batch_endpoint(customers: list[CustomerFeatures], request: Request):
              if v is not None}
             for c in customers
         ]
-        df = _engineer_features(pd.DataFrame(records))
 
-        if expected is not None:
-            for col in expected:
-                if col not in df.columns:
-                    df[col] = 0
-            df = df[[c for c in expected if c in df.columns]]
-
-        probas = pipeline.predict_proba(df)[:, 1]
-        results = [ChurnResponse(**_classify(float(p))) for p in probas]
-        high_risk = sum(1 for r in results if r.retention_risk == "High")
-        return BatchChurnResponse(
-            results=results,
-            total_records=len(results),
-            high_risk_count=high_risk,
+        loop = asyncio.get_running_loop()
+        batch_response = await loop.run_in_executor(
+            request.app.state.executor, _process_batch_prediction, pipeline, expected, records
         )
+        return batch_response
 
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.exception("BATCH_PREDICTION_ERROR", extra={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Batch prediction failed due to an internal error.")
+
+
+def _get_groq_client():
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY environment variable is not set.")
+    return Groq(api_key=api_key)
+
+
+def _generate_script(prompt: str) -> str:
+    try:
+        client = _get_groq_client()
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "[Generated by Llama-3] " + response.choices[0].message.content.strip()
+    except Exception as exc:
+        logger.error("LLM_GENERATION_FAILED", extra={"error": str(exc)})
+        return (
+            "[Fallback Script] "
+            "We value you as a customer. "
+            "Let me review your account and find a solution that works for you."
+        )
 
 
 @app.post(
@@ -303,23 +345,14 @@ def predict_batch_endpoint(customers: list[CustomerFeatures], request: Request):
     response_model=RetentionScriptResponse,
     tags=["Generative AI"],
 )
-def generate_retention_script(req: RetentionScriptRequest):
+async def generate_retention_script(request_payload: RetentionScriptRequest, request: Request):
+    """Generate a retention script using Groq LLM."""
     prompt = (
         f"Write a 2-sentence retention script for a customer service agent. "
-        f"The customer has a {req.risk_level} churn risk. "
-        f"Key reasons: {req.reasons}. "
+        f"The customer has a {request_payload.risk_level} churn risk. "
+        f"Key reasons: {request_payload.reasons}. "
         f"Keep it concise and actionable."
     )
-    try:
-        response = groq_client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        script = "[Generated by Llama-3] " + response.choices[0].message.content.strip()
-    except Exception:
-        script = (
-            "[Fallback Script] "
-            "We value you as a customer. "
-            "Let me review your account and find a solution that works for you."
-        )
+    loop = asyncio.get_running_loop()
+    script = await loop.run_in_executor(request.app.state.executor, _generate_script, prompt)
     return RetentionScriptResponse(script=script)

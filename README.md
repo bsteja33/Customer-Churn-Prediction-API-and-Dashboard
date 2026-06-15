@@ -23,7 +23,7 @@ Predictive retention system for telecoms. Uses LightGBM for churn risk scoring, 
 }}}%%
 graph TD
     A["User Inputs"]:::frontend -->|"Next.js Form + Zod Validation"| B["JSON Payload POST"]:::frontend
-    B -->|"localhost:8000/predict"| C["FastAPI Gateway"]:::backend
+    B -->|"POST /predict"| C["FastAPI Gateway"]:::backend
     C -->|"CustomerFeatures Pydantic Validation"| D["Feature Matrix Engineering"]:::backend
     D -->|"Column Matching + Regex Sanitization"| E["LightGBM Pipeline<br/>models/churn_model.pkl"]:::ml
     E -->|"predict_proba → Risk Tier"| F["Groq LLM<br/>llama3-8b-8192"]:::ai
@@ -35,7 +35,7 @@ graph TD
     classDef ai fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffedd5
 ```
 
-## Dataset
+## Dataset Configuration
 
 Training data comes from [aai510-group1/telco-customer-churn](https://huggingface.co/datasets/aai510-group1/telco-customer-churn). It has 52 columns with demographics, services, account details, and churn labels. The pipeline removes 14 columns (IDs, location data, churn metadata) and builds features using one-hot encoding and column name sanitization.
 
@@ -45,15 +45,25 @@ Training data comes from [aai510-group1/telco-customer-churn](https://huggingfac
 * Training Volume: 50,000 customer records
 * Validation: Stratified 80/20 holdout
 
-## How to Run
+## Setup and Execution
 
-### Native
+### Configuration
+
+Copy the example environment configuration to set API keys and endpoints:
+
+```bash
+cp .env.example .env
+```
+
+### Native Environment
 
 ```bash
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-python src/train.py --config config.yaml
+
+# Run the training pipeline (requires HF_TOKEN if gated dataset)
+python src/train.py
 
 # Terminal 1 - Backend
 uvicorn api.app:app --host 0.0.0.0 --port 8000
@@ -68,7 +78,7 @@ cd frontend && npm install && npm run dev
 docker compose up --build
 ```
 
-### API Test
+### API Inference Test
 
 ```bash
 curl -X POST http://localhost:8000/predict \
@@ -91,55 +101,70 @@ curl -X POST http://localhost:8000/predict \
 ## Project Structure
 
 ```text
-.dockerignore
-.flake8
-.gitignore
-.github/workflows/ci.yml
-LICENSE
-Makefile
-README.md
-api/
-  app.py
-  __init__.py
-config.yaml
-docker-compose.yml
-Dockerfile
-frontend/
-  package.json
-  next.config.ts
-  vitest.config.ts
-  src/
-    app/
-      layout.tsx
-      page.tsx
-      globals.css
-      analysis/page.tsx
-      parameters/page.tsx
-      status/page.tsx
-    components/ui/FormField.tsx
-    lib/schema.ts
-    store/useChurnStore.ts
-    tests/
-      store.test.ts
-      components.test.tsx
-    types/api.ts
-load_tests/locustfile.py
-models/churn_model.pkl
-requirements-dev.txt
-requirements.txt
-scripts/monitor_health.py
-src/
-  data_preprocessing.py
-  feature_engineering.py
-  predict.py
-  train.py
-  __init__.py
-tests/
-  __init__.py
-  test_api.py
-  test_src.py
-  integration/
-    test_full_stack.py
+.
+├── .github
+│   ├── dependabot.yml
+│   └── workflows
+│       └── ci.yml
+├── api
+│   ├── __init__.py
+│   └── app.py
+├── frontend
+│   ├── src
+│   │   ├── app
+│   │   │   ├── analysis/page.tsx
+│   │   │   ├── parameters/page.tsx
+│   │   │   ├── status/page.tsx
+│   │   │   ├── favicon.ico
+│   │   │   ├── globals.css
+│   │   │   ├── layout.tsx
+│   │   │   └── page.tsx
+│   │   ├── components/ui/FormField.tsx
+│   │   ├── lib/schema.ts
+│   │   ├── store/useChurnStore.ts
+│   │   ├── tests
+│   │   │   ├── components.test.tsx
+│   │   │   └── store.test.ts
+│   │   └── types/api.ts
+│   ├── .dockerignore
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── eslint.config.mjs
+│   ├── next.config.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.mjs
+│   ├── tsconfig.json
+│   └── vitest.config.ts
+├── load_tests
+│   └── locustfile.py
+├── models
+│   └── churn_model.pkl
+├── scripts
+│   └── monitor_health.py
+├── src
+│   ├── __init__.py
+│   ├── config.py
+│   ├── data_preprocessing.py
+│   ├── feature_engineering.py
+│   ├── predict.py
+│   └── train.py
+├── tests
+│   ├── integration/test_full_stack.py
+│   ├── __init__.py
+│   ├── test_api.py
+│   └── test_src.py
+├── .dockerignore
+├── .env.example
+├── .flake8
+├── .gitignore
+├── docker-compose.yml
+├── Dockerfile
+├── LICENSE
+├── Makefile
+├── README.md
+├── requirements-dev.txt
+└── requirements.txt
 ```
 
 ## Load Test Results
@@ -155,7 +180,7 @@ Benchmark: Locust with 10 concurrent users, spawn rate 2/s, 30s duration.
 * Total Requests: 196
 * Total Failures: 0
 
-## Testing
+## Testing & CI
 
 ```bash
 # All backend tests
@@ -171,7 +196,7 @@ cd frontend && npm test
 locust -f load_tests/locustfile.py --headless -u 10 -r 2
 ```
 
-The test suite mocks the Groq API, so no API key is needed for local runs. The CI pipeline enforces a minimum 80% code coverage threshold.
+The test suite mocks the Groq API. The CI pipeline enforces a minimum 80% code coverage threshold.
 
 ## License
 

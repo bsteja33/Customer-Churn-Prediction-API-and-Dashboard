@@ -92,7 +92,7 @@ const INITIAL_FORM: Record<string, string | number | null> = Object.fromEntries(
   FIELDS.map((f) => [f.key, f.type === "number" ? null : ""])
 );
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 export default function ParametersPage() {
   const [form, setForm] = useState(INITIAL_FORM);
@@ -129,10 +129,14 @@ export default function ParametersPage() {
 
       const validatedPayload = ChurnInputSchema.parse(payload);
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
       const predictRes = await fetch(`${API_BASE}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validatedPayload),
+        signal: controller.signal,
       });
 
       if (!predictRes.ok) {
@@ -149,7 +153,9 @@ export default function ParametersPage() {
           risk_level: predData.retention_risk,
           reasons: `Churn probability ${(predData.churn_probability * 100).toFixed(1)}%. Contract: ${form["Contract"] || "Unknown"}. Tenure: ${form["tenure"] || "Unknown"} months.`,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       const scriptData: RetentionScriptResponse = scriptRes.ok
         ? await scriptRes.json()

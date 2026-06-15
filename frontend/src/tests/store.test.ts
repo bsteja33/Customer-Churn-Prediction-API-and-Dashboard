@@ -51,15 +51,15 @@ describe("useChurnStore", () => {
     useChurnStore.getState().setResults(mockPrediction, mockRetention);
     useChurnStore.getState().clearResults();
     const state = useChurnStore.getState();
-    expect(state.prediction).toBeNull();
-    expect(state.retention).toBeNull();
+    expect(state.prediction).toBeUndefined();
+    expect(state.retention).toBeUndefined();
   });
 
   it("clearResults is idempotent when already null", () => {
     useChurnStore.getState().clearResults();
     const state = useChurnStore.getState();
-    expect(state.prediction).toBeNull();
-    expect(state.retention).toBeNull();
+    expect(state.prediction).toBeUndefined();
+    expect(state.retention).toBeUndefined();
   });
 
   it("preserves prediction when retention is updated", () => {

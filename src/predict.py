@@ -4,19 +4,19 @@ import argparse
 import json
 import logging
 import pathlib
+from typing import Any, Dict
 
 import joblib
 import numpy as np
 import pandas as pd
 
-from typing import Any
-from src.data_preprocessing import load_config
+from src.config import MODEL_CONFIG
 from src.feature_engineering import engineer_features_inference
 
 logger = logging.getLogger(__name__)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-_DEFAULT_MODEL_PATH = ROOT / "models" / "churn_model.pkl"
+_DEFAULT_MODEL_PATH = ROOT / MODEL_CONFIG.get("save_path", "models/churn_model.pkl")
 
 if not logger.handlers:
     logger.setLevel(logging.INFO)
@@ -24,11 +24,18 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-_ARTIFACT_CACHE: dict[str, Any] | None = None
+_ARTIFACT_CACHE: Any = None
 
 
 def _load_artifact(model_path: pathlib.Path) -> dict:
-    """Load and cache the model artifact."""
+    """
+    Load and cache the model artifact.
+
+    :param model_path: Path to the serialized model artifact.
+    :type model_path: pathlib.Path
+    :return: The loaded model artifact dictionary.
+    :rtype: dict
+    """
     global _ARTIFACT_CACHE
     if _ARTIFACT_CACHE is None:
         if not model_path.exists():
@@ -42,23 +49,28 @@ def _load_artifact(model_path: pathlib.Path) -> dict:
 
 
 def predict_single(
-    customer: dict,
+    customer: Dict[str, Any],
     model_path: pathlib.Path = _DEFAULT_MODEL_PATH,
-) -> dict:
-    """Predict churn probability for a single customer record."""
+) -> Dict[str, Any]:
+    """
+    Predict churn probability for a single customer record.
+
+    :param customer: Dictionary containing customer features.
+    :type customer: dict
+    :param model_path: Path to the model.
+    :type model_path: pathlib.Path
+    :return: Dictionary containing the prediction and risk tier.
+    :rtype: dict
+    """
     artifact = _load_artifact(model_path)
     pipeline = artifact["pipeline"]
 
-    df = pd.DataFrame([customer])
-    df = engineer_features_inference(df)
+    dataframe = pd.DataFrame([customer])
+    dataframe = engineer_features_inference(dataframe)
 
-    try:
-        cfg = load_config(str(ROOT / "config.yaml"))
-        _threshold = float(cfg["model"]["threshold"])
-    except Exception:
-        _threshold = 0.5
+    _threshold = float(MODEL_CONFIG.get("threshold", 0.5))
 
-    churn_proba = float(pipeline.predict_proba(df)[0][1])
+    churn_proba = float(pipeline.predict_proba(dataframe)[0][1])
     prediction = int(churn_proba >= _threshold)
 
     if churn_proba >= 0.70:
@@ -80,17 +92,26 @@ def predict_single(
 
 
 def predict_batch(
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     model_path: pathlib.Path = _DEFAULT_MODEL_PATH,
 ) -> pd.DataFrame:
-    """Run batch predictions on a DataFrame."""
+    """
+    Run batch predictions on a DataFrame.
+
+    :param dataframe: Features dataframe for prediction.
+    :type dataframe: pd.DataFrame
+    :param model_path: Path to the model.
+    :type model_path: pathlib.Path
+    :return: DataFrame with predictions appended.
+    :rtype: pd.DataFrame
+    """
     artifact = _load_artifact(model_path)
     pipeline = artifact["pipeline"]
 
-    probas = pipeline.predict_proba(df)[:, 1]
-    preds = (probas >= 0.5).astype(int)
+    probas = pipeline.predict_proba(dataframe)[:, 1]
+    preds = (probas >= float(MODEL_CONFIG.get("threshold", 0.5))).astype(int)
 
-    result = df.copy()
+    result = dataframe.copy()
     result["churn_probability"] = np.round(probas, 4)
     result["prediction"] = preds
     return result
@@ -109,9 +130,9 @@ if __name__ == "__main__":
 
     if args.input:
         record = json.loads(args.input)
-        result = predict_single(record, model_path=mpath)
-        print(json.dumps(result, indent=2))
+        out_result = predict_single(record, model_path=mpath)
+        logger.info("\n%s", json.dumps(out_result, indent=2))
     else:
-        df = pd.read_csv(args.csv)
-        out = predict_batch(df, model_path=mpath)
-        print(out[["churn_probability", "prediction"]].to_string())
+        df_in = pd.read_csv(args.csv)
+        out_df = predict_batch(df_in, model_path=mpath)
+        logger.info("\n%s", out_df[["churn_probability", "prediction"]].to_string())

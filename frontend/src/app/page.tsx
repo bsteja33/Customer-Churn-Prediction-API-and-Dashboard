@@ -8,12 +8,15 @@ export default function CommandCenter() {
   const [apiConnected, setApiConnected] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     async function checkHealth() {
       try {
-        const res = await fetch(`${API_BASE}/health`);
+        const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+        clearTimeout(timeout);
         if (res.ok) {
           const data = await res.json();
           setApiConnected(data.status === "healthy");
@@ -25,6 +28,10 @@ export default function CommandCenter() {
       }
     }
     checkHealth();
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [API_BASE]);
 
   return (

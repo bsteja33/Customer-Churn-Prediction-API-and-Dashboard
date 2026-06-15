@@ -2,6 +2,7 @@
 the Next.js frontend through the FastAPI backend, covering prediction, retention
 script generation (Groq fallback), and badge tag assertions."""
 
+from api.app import app
 import sys
 import pathlib
 from unittest.mock import patch
@@ -12,7 +13,6 @@ from fastapi.testclient import TestClient
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent.parent)
 sys.path.insert(0, ROOT)
 
-from api.app import app
 
 # Payload mirroring the exact structure sent by frontend/src/app/parameters/page.tsx
 _PAYLOAD = {
@@ -104,7 +104,8 @@ class TestFullStackPrediction:
 class TestFullStackRetentionScript:
     """End-to-end: /generate_retention_script with fallback behavior."""
 
-    @patch("api.app.groq_client.chat.completions.create")
+    @patch.dict("os.environ", {"GROQ_API_KEY": "dummy"})
+    @patch("groq.resources.chat.completions.Completions.create")
     def test_retention_script_with_fallback(self, mock_groq, client: TestClient):
         """Groq unavailable — endpoint returns fallback script."""
         mock_groq.side_effect = Exception("API key not configured")
@@ -143,7 +144,8 @@ class TestFullStackRoundTrip:
     Mirrors the exact frontend flow in frontend/src/app/parameters/page.tsx.
     """
 
-    @patch("api.app.groq_client.chat.completions.create")
+    @patch.dict("os.environ", {"GROQ_API_KEY": "dummy"})
+    @patch("groq.resources.chat.completions.Completions.create")
     def test_predict_then_script_round_trip(self, mock_groq, client: TestClient):
         mock_groq.side_effect = Exception("Groq API unavailable")
 
