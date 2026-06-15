@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Database, ChevronRight, ActivitySquare } from "lucide-react";
+import { Activity, Database, ChevronRight, SquareActivity } from "lucide-react";
 
 export default function CommandCenter() {
   const [apiConnected, setApiConnected] = useState(false);
@@ -83,7 +83,7 @@ export default function CommandCenter() {
             className="group flex items-center justify-between p-4 border border-white/10 hover:border-white/40 transition-colors duration-500 w-full md:w-1/2"
           >
             <div className="flex items-center gap-3">
-              <ActivitySquare size={16} className="text-white/50 group-hover:text-white transition-colors" />
+              <SquareActivity size={16} className="text-white/50 group-hover:text-white transition-colors" />
               <span className="text-xs font-bold tracking-widest uppercase">System Status</span>
             </div>
             <ChevronRight className="text-white/50 group-hover:text-white group-hover:translate-x-2 transition-all duration-500" />

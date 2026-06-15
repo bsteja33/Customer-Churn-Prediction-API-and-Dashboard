@@ -3,7 +3,7 @@ import { useChurnStore } from "../store/useChurnStore";
 
 describe("useChurnStore", () => {
   beforeEach(() => {
-    useChurnStore.setState({ prediction: null, retention: null });
+    useChurnStore.setState({ prediction: undefined, retention: undefined });
   });
 
   const mockPrediction = {
@@ -18,8 +18,8 @@ describe("useChurnStore", () => {
 
   it("starts with null prediction and retention", () => {
     const state = useChurnStore.getState();
-    expect(state.prediction).toBeNull();
-    expect(state.retention).toBeNull();
+    expect(state.prediction).toBeUndefined();
+    expect(state.retention).toBeUndefined();
   });
 
   it("setResults stores both prediction and retention", () => {

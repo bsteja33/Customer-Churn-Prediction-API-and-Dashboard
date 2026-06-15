@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -98,9 +98,17 @@ export default function ParametersPage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const setResults = useChurnStore((state) => state.setResults);
   const router = useRouter();
+
+  // Abort any in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const updateField = (key: string, value: string | number) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -109,6 +117,11 @@ export default function ParametersPage() {
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     try {
       const payload: Record<string, string | number | null | undefined> = {};
@@ -128,9 +141,6 @@ export default function ParametersPage() {
       }
 
       const validatedPayload = ChurnInputSchema.parse(payload);
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
 
       const predictRes = await fetch(`${API_BASE}/predict`, {
         method: "POST",
@@ -155,15 +165,17 @@ export default function ParametersPage() {
         }),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
 
       const scriptData: RetentionScriptResponse = scriptRes.ok
         ? await scriptRes.json()
         : { script: "Failed to generate script." };
 
       setResults(predData, scriptData);
+      clearTimeout(timeout);
+      setLoading(false);
       router.push("/analysis");
     } catch (err) {
+      clearTimeout(timeout);
       if (err instanceof z.ZodError) {
         setError(
           err.issues

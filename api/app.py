@@ -3,20 +3,20 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import pathlib
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from src.feature_engineering import engineer_features_inference
 from src.config import MODEL_CONFIG
 
@@ -74,9 +74,15 @@ async def lifespan(app: FastAPI):
             "Run 'python src/train.py' first."
         )
     artifact = joblib.load(_model_path)
-    app.state.model = artifact["pipeline"]
+    pipeline = artifact.get("pipeline")
+    if pipeline is None or not hasattr(pipeline, "predict_proba"):
+        raise RuntimeError(
+            f"Model artifact at {_model_path} is corrupted: "
+            "missing pipeline with predict_proba."
+        )
+    app.state.model = pipeline
     app.state.expected_features = getattr(
-        app.state.model, "feature_name_", None
+        pipeline, "feature_name_", None
     )
 
     executor = ThreadPoolExecutor(max_workers=4)
@@ -134,44 +140,51 @@ async def log_requests(request: Request, call_next):
 
 
 class CustomerFeatures(BaseModel):
-    model_config = ConfigDict(strict=False, extra="forbid")
-    Gender: Optional[str] = Field(None)
-    SeniorCitizen: Optional[int] = Field(None)
-    Partner: Optional[int] = Field(None)
-    Dependents: Optional[int] = Field(None)
-    tenure: Optional[int] = Field(None)
-    PhoneService: Optional[int] = Field(None)
-    MultipleLines: Optional[int] = Field(None)
-    InternetService: Optional[int] = Field(None)
-    OnlineSecurity: Optional[int] = Field(None)
-    OnlineBackup: Optional[int] = Field(None)
-    DeviceProtection: Optional[int] = Field(None)
-    TechSupport: Optional[int] = Field(None)
-    StreamingTV: Optional[int] = Field(None)
-    StreamingMovies: Optional[int] = Field(None)
-    Contract: Optional[str] = Field(None)
-    PaperlessBilling: Optional[int] = Field(None)
-    PaymentMethod: Optional[str] = Field(None)
-    MonthlyCharges: Optional[float] = Field(None)
-    TotalCharges: Optional[float] = Field(None)
-    Married: Optional[int] = Field(None)
-    NumberOfDependents: Optional[int] = Field(None)
-    NumberOfReferrals: Optional[int] = Field(None)
-    SatisfactionScore: Optional[int] = Field(None)
-    InternetType: Optional[str] = Field(None)
-    Offer: Optional[str] = Field(None)
-    Age: Optional[int] = Field(None)
-    AvgMonthlyGBDownload: Optional[int] = Field(None)
-    AvgMonthlyLongDistanceCharges: Optional[float] = Field(None)
-    CLTV: Optional[int] = Field(None)
-    Under30: Optional[int] = Field(None)
-    UnlimitedData: Optional[int] = Field(None)
-    StreamingMusic: Optional[int] = Field(None)
-    ReferredAFriend: Optional[int] = Field(None)
-    TotalRefunds: Optional[float] = Field(None)
-    TotalExtraDataCharges: Optional[int] = Field(None)
-    TotalLongDistanceCharges: Optional[float] = Field(None)
-    TotalRevenue: Optional[float] = Field(None)
+    model_config = ConfigDict(strict=True, extra="forbid")
+    Gender: str | None = Field(None)
+    SeniorCitizen: int | None = Field(None)
+    Partner: int | None = Field(None)
+    Dependents: int | None = Field(None)
+    tenure: int | None = Field(None)
+    PhoneService: int | None = Field(None)
+    MultipleLines: int | None = Field(None)
+    InternetService: int | None = Field(None)
+    OnlineSecurity: int | None = Field(None)
+    OnlineBackup: int | None = Field(None)
+    DeviceProtection: int | None = Field(None)
+    TechSupport: int | None = Field(None)
+    StreamingTV: int | None = Field(None)
+    StreamingMovies: int | None = Field(None)
+    Contract: str | None = Field(None)
+    PaperlessBilling: int | None = Field(None)
+    PaymentMethod: str | None = Field(None)
+    MonthlyCharges: float | None = Field(None)
+    TotalCharges: float | None = Field(None)
+    Married: int | None = Field(None)
+    NumberOfDependents: int | None = Field(None)
+    NumberOfReferrals: int | None = Field(None)
+    SatisfactionScore: int | None = Field(None)
+    InternetType: str | None = Field(None)
+    Offer: str | None = Field(None)
+    Age: int | None = Field(None)
+    AvgMonthlyGBDownload: int | None = Field(None)
+    AvgMonthlyLongDistanceCharges: float | None = Field(None)
+    CLTV: int | None = Field(None)
+    Under30: int | None = Field(None)
+    UnlimitedData: int | None = Field(None)
+    StreamingMusic: int | None = Field(None)
+    ReferredAFriend: int | None = Field(None)
+    TotalRefunds: float | None = Field(None)
+    TotalExtraDataCharges: int | None = Field(None)
+    TotalLongDistanceCharges: float | None = Field(None)
+    TotalRevenue: float | None = Field(None)
+
+    @field_validator("*")
+    @classmethod
+    def _reject_nan_infinity(cls, v):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            raise ValueError("NaN or Infinity is not allowed for float fields")
+        return v
 
 
 class ChurnResponse(BaseModel):
@@ -329,6 +342,7 @@ def _generate_script(prompt: str) -> str:
         response = client.chat.completions.create(
             model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
+            timeout=10.0,
         )
         return "[Generated by Llama-3] " + response.choices[0].message.content.strip()
     except Exception as exc:

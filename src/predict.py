@@ -24,7 +24,7 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-_ARTIFACT_CACHE: Any = None
+_ARTIFACT_CACHE: dict | None = None
 
 
 def _load_artifact(model_path: pathlib.Path) -> dict:
@@ -44,6 +44,13 @@ def _load_artifact(model_path: pathlib.Path) -> dict:
                 "Please run 'python src/train.py' first."
             )
         _ARTIFACT_CACHE = joblib.load(model_path)
+        pipeline = _ARTIFACT_CACHE.get("pipeline")
+        if pipeline is None or not hasattr(pipeline, "predict_proba"):
+            _ARTIFACT_CACHE = None
+            raise RuntimeError(
+                f"Model artifact at '{model_path}' is corrupted: "
+                "missing pipeline with predict_proba."
+            )
         logger.info("MODEL_LOADED: %s", model_path)
     return _ARTIFACT_CACHE
 
@@ -86,6 +93,8 @@ def predict_single(
         "retention_risk": risk,
     }
 
+    del dataframe
+
     logger.info("PREDICTION_GENERATED: INPUT=%s OUTPUT=%s", json.dumps(customer), json.dumps(result))
 
     return result
@@ -114,6 +123,7 @@ def predict_batch(
     result = dataframe.copy()
     result["churn_probability"] = np.round(probas, 4)
     result["prediction"] = preds
+    del dataframe
     return result
 
 
