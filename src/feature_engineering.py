@@ -149,6 +149,8 @@ def engineer_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, list, 
     y = df["Churn"]
     X = df.drop(columns=["Churn"])
 
+    del df
+
     cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
     num_cols = X.select_dtypes(include=np.number).columns.tolist()
 

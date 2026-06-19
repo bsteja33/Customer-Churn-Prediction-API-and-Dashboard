@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  LIMITER_ENABLED: "false"
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   backend-validation:
     runs-on: ubuntu-latest
@@ -106,6 +110,16 @@ jobs:
         if: steps.check_files.outputs.run_frontend == 'true'
         run: cd frontend && npm run build
 
+      - name: Install Playwright Browsers
+        if: steps.check_files.outputs.run_frontend == 'true'
+        run: npx playwright install --with-deps
+        working-directory: frontend
+
+      - name: Run Playwright E2E Tests
+        if: steps.check_files.outputs.run_frontend == 'true'
+        run: npx playwright test
+        working-directory: frontend
+
   load-test:
     runs-on: ubuntu-latest
     needs: [backend-validation]
@@ -137,3 +151,4 @@ jobs:
           nohup uvicorn api.app:app --host 0.0.0.0 --port 8000 > /tmp/api.log 2>&1 &
           sleep 5
           locust -f load_tests/locustfile.py --headless -u 50 -r 10 -t 15s --host http://localhost:8000
+        working-directory: .

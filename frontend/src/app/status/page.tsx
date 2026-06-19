@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Activity, Database, Clock, Server } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || "development";
 
 interface HealthData {
@@ -31,7 +30,7 @@ export default function StatusPage() {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const res = await fetch(`${API_BASE}/health`, {
+        const res = await fetch(`/api/health`, {
           signal: controller.signal,
         });
         clearTimeout(timeout);

@@ -5,7 +5,7 @@ script generation (Groq fallback), and badge tag assertions."""
 from api.app import app
 import sys
 import pathlib
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -105,10 +105,12 @@ class TestFullStackRetentionScript:
     """End-to-end: /generate_retention_script with fallback behavior."""
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "dummy"})
-    @patch("groq.resources.chat.completions.Completions.create")
-    def test_retention_script_with_fallback(self, mock_groq, client: TestClient):
+    @patch("api.app.Groq")
+    def test_retention_script_with_fallback(self, mock_groq_cls, client: TestClient):
         """Groq unavailable — endpoint returns fallback script."""
-        mock_groq.side_effect = Exception("API key not configured")
+        mock_instance = MagicMock()
+        mock_instance.chat.completions.create.side_effect = Exception("API key not configured")
+        mock_groq_cls.return_value = mock_instance
         resp = client.post(
             "/generate_retention_script",
             json={
@@ -145,9 +147,11 @@ class TestFullStackRoundTrip:
     """
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "dummy"})
-    @patch("groq.resources.chat.completions.Completions.create")
-    def test_predict_then_script_round_trip(self, mock_groq, client: TestClient):
-        mock_groq.side_effect = Exception("Groq API unavailable")
+    @patch("api.app.Groq")
+    def test_predict_then_script_round_trip(self, mock_groq_cls, client: TestClient):
+        mock_instance = MagicMock()
+        mock_instance.chat.completions.create.side_effect = Exception("Groq API unavailable")
+        mock_groq_cls.return_value = mock_instance
 
         # Step 1: Predict
         pred_resp = client.post("/predict", json=_PAYLOAD)

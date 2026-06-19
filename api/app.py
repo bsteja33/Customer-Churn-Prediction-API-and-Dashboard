@@ -17,8 +17,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 from src.feature_engineering import engineer_features_inference
 from src.config import MODEL_CONFIG
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -109,6 +114,16 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+
+# Allow CI/load-test environments to bypass the rate limiter
+if os.environ.get("LIMITER_ENABLED", "true").strip().lower() == "false":
+    limiter.enabled = False
+
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
+
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -260,6 +275,7 @@ def _process_prediction(pipeline, expected, record):
 
 
 @app.post("/predict", response_model=ChurnResponse, tags=["Machine Learning"])
+@limiter.limit("10/minute")
 async def predict_endpoint(customer: CustomerFeatures, request: Request):
     try:
         pipeline = request.app.state.model
@@ -359,6 +375,7 @@ def _generate_script(prompt: str) -> str:
     response_model=RetentionScriptResponse,
     tags=["Generative AI"],
 )
+@limiter.limit("5/minute")
 async def generate_retention_script(request_payload: RetentionScriptRequest, request: Request):
     """Generate a retention script using Groq LLM."""
     prompt = (

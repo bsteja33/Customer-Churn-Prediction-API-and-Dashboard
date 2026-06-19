@@ -22,3 +22,11 @@ test:
 # Build the Docker image
 docker-build:
 	docker build -t churn-api:latest .
+
+# Simulate CI workflow locally via act (requires Docker)
+act-simulate:
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v .:/workspace nektos/act pull_request -W .github/workflows/ci.yml --dryrun
+
+# Run Playwright E2E tests (auto-boots dev server)
+playwright:
+	cd frontend && npx playwright test --headless

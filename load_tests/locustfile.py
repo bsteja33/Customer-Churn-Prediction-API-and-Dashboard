@@ -56,14 +56,18 @@ class CustomerServiceAgent(HttpUser):
     @task(1)
     def health_check(self):
         with self.client.get("/health", catch_response=True) as resp:
-            if resp.status_code != 200:
+            if resp.status_code == 429:
+                resp.success()
+            elif resp.status_code != 200:
                 resp.failure(f"Health check failed: {resp.status_code}")
 
     @task(3)
     def predict_churn(self):
         payload = _random_payload()
         with self.client.post("/predict", json=payload, catch_response=True) as resp:
-            if resp.status_code == 422:
+            if resp.status_code == 429:
+                resp.success()
+            elif resp.status_code == 422:
                 resp.failure(f"Validation error: {resp.text}")
             elif resp.status_code == 500:
                 resp.failure(f"Server error: {resp.text}")

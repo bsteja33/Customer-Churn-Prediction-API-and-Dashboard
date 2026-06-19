@@ -92,8 +92,6 @@ const INITIAL_FORM: Record<string, string | number | null> = Object.fromEntries(
   FIELDS.map((f) => [f.key, f.type === "number" ? null : ""])
 );
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
-
 export default function ParametersPage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
@@ -142,7 +140,7 @@ export default function ParametersPage() {
 
       const validatedPayload = ChurnInputSchema.parse(payload);
 
-      const predictRes = await fetch(`${API_BASE}/predict`, {
+      const predictRes = await fetch(`/api/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validatedPayload),
@@ -156,7 +154,7 @@ export default function ParametersPage() {
 
       const predData: PredictResponse = await predictRes.json();
 
-      const scriptRes = await fetch(`${API_BASE}/generate_retention_script`, {
+      const scriptRes = await fetch(`/api/generate_retention_script`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
