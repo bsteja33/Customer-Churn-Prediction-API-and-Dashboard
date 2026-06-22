@@ -15,7 +15,7 @@ jobs:
   backend-validation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify Backend Presence
         id: check_files
@@ -65,7 +65,7 @@ jobs:
   frontend-validation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify Frontend Presence
         id: check_files
@@ -124,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend-validation]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
