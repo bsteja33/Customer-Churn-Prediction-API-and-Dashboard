@@ -34,7 +34,7 @@ jobs:
 
       - name: Cache pip dependencies
         if: steps.check_files.outputs.run_backend == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: pip-cache
         with:
           path: ~/.cache/pip
@@ -86,7 +86,7 @@ jobs:
 
       - name: Cache .next cache
         if: steps.check_files.outputs.run_frontend == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: next-cache
         with:
           path: frontend/.next/cache
@@ -132,7 +132,7 @@ jobs:
           python-version: '3.13'
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: pip-cache-2
         with:
           path: ~/.cache/pip
